@@ -1,0 +1,33 @@
+[package]
+name = "onecontrol-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Logging
+log = { version = "0.4" }
+flexi_logger = { version = "0.22", features = ["use_chrono_for_offset"] }
+
+# Utility
+anyhow = { version = "1.0" }
+lazy_static = { version = "1.4" }
+derive_more = { version = "0.99" }
+
+# CLI
+clap = { version = "3.2", features = ["derive"] }
+
+# Async
+tokio = { version = "1.20", features = ["full"] }
+async-trait = { version = "0.1" }
+futures = { version = "0.3" }
+
+# Bluetooth
+bluer = { version = "0.15", features = ["bluetoothd"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+serde_yaml = { version = "0.9" }
+
+# Encoding
+cobs = { version = "0.2" }
