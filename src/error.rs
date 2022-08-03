@@ -2,6 +2,8 @@ pub type Result<T> = std::result::Result<T, AppError>;
 
 #[derive(Debug, Display)]
 pub enum AppError {
+    InvalidPayload,
+    InvalidCommand(u8),
     Generic(String),
 }
 

@@ -162,11 +162,11 @@
     "ID": 1,
     "ClientCommandIdStart": 0,
     "CommandTypeIndex": 2,
-    "MaxPayloadLength": 6,
     "DeviceTableIdIndex": 3,
     "StartDeviceIdIndex": 4,
     "MaxDeviceRequestCountIndex": 5,
-    "MinPayloadLength": 6
+    "MinPayloadLength": 6,
+    "MaxPayloadLength": 6
   },
   "GetDevicesMetadata": {
     "ID": 2,

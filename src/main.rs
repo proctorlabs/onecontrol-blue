@@ -5,14 +5,16 @@ extern crate log;
 extern crate derive_more;
 
 use args::*;
+use error::Result;
 use flexi_logger::{AdaptiveFormat, Logger};
 use std::str::FromStr;
-use error::Result;
+use commands::{GetDevices, CommandTrait, Command};
 
 mod args;
-mod crc;
 mod bluetooth;
+mod crc;
 mod error;
+mod commands;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,9 +28,13 @@ async fn main() -> Result<()> {
         .adaptive_format_for_stderr(AdaptiveFormat::Default)
         .set_palette("196;208;31;8;59".into())
         .start()?;
-    let teststr = format!("Hello {}!", args.device);
-    let res = crc::calc(teststr.as_bytes());
-    info!("CRC for `{}` is: {}", teststr, res);
-    bluetooth::scan(&args.device).await?;
+    let mut getdevices = GetDevices::default();
+    getdevices.client_command_id = 500;
+    getdevices.device_table_id = 200;
+    let command: Command = getdevices.into();
+    info!("{:?}", command.encode()?);
+    if false {
+        bluetooth::scan(&args.device).await?;
+    }
     Ok(())
 }
