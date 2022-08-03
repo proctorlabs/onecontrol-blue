@@ -32,7 +32,13 @@ async fn main() -> Result<()> {
     getdevices.client_command_id = 500;
     getdevices.device_table_id = 200;
     let command: Command = getdevices.into();
-    info!("{:?}", command.encode()?);
+    info!("Original command: {:?}", command);
+    let orig_payload = command.to_payload()?;
+    info!("Payload: {:?}", orig_payload);
+    let encoded = command.encode()?;
+    info!("Encoded payload: {:?}", encoded);
+    let decoded_command = Command::decode(&encoded);
+    info!("Decoded command: {:?}", decoded_command);
     if false {
         bluetooth::scan(&args.device).await?;
     }

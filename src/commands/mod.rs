@@ -2,23 +2,40 @@ use crate::crc;
 use crate::error::*;
 use cobs;
 
-pub trait CommandTrait {
+pub trait CommandTrait: Sized {
     fn min_length(&self) -> usize;
     fn max_length(&self) -> usize;
     fn command_type(&self) -> CommandType;
 
-    fn payload(&self) -> Result<Vec<u8>>;
+    fn to_payload(&self) -> Result<Vec<u8>>;
+    fn from_payload(bytes: &[u8]) -> Result<Self>;
 
     fn encode(&self) -> Result<Vec<u8>> {
-        let mut payload = self.payload()?;
+        let mut payload = self.to_payload()?;
         let crcval = crc::calc(&payload);
         payload.push(crcval);
         Ok(cobs::encode_vec(&payload))
     }
+
+    fn decode(bytes: &[u8]) -> Result<Self> {
+        let mut decoded = cobs::decode_vec(bytes).map_err(|_| AppError::InvalidPayload)?;
+        if decoded.len() <= 4 {
+            return Err(AppError::InvalidPayload);
+        }
+        let crcval = decoded.pop().unwrap();
+        let decoded_crc = crc::calc(&decoded);
+        if crcval != decoded_crc {
+            Err(AppError::InvalidPayload)
+        } else {
+            Self::from_payload(&decoded)
+        }
+    }
 }
 
 impl std::convert::From<CommandType> for u8 {
-    fn from(val: CommandType) -> Self { val as u8 }
+    fn from(val: CommandType) -> Self {
+        val as u8
+    }
 }
 
 macro_rules! commands {
@@ -70,9 +87,18 @@ macro_rules! commands {
                 }
             }
 
-            fn payload(&self) -> Result<Vec<u8>> {
+            fn to_payload(&self) -> Result<Vec<u8>> {
                 match &self {
-                    $( Command::$msgname(inner) => inner.payload(), )*
+                    $( Command::$msgname(inner) => inner.to_payload(), )*
+                }
+            }
+
+            fn from_payload(bytes: &[u8]) -> Result<Self> {
+                if bytes.len() < 3 {
+                    return Err(AppError::InvalidPayload);
+                }
+                match bytes[2].try_into()? {
+                    $( CommandType::$msgname => Ok(Command::$msgname($msgname::from_payload(bytes)?)), )*
                 }
             }
         }
@@ -90,7 +116,7 @@ macro_rules! commands {
                 fn max_length(&self) -> usize { $max }
                 fn command_type(&self) -> CommandType { CommandType::$msgname }
 
-                fn payload(&self) -> Result<Vec<u8>> {
+                fn to_payload(&self) -> Result<Vec<u8>> {
                     let mut res = vec![0; $max];
                     {
                         let srcbytes = self.client_command_id.to_be_bytes();
@@ -104,6 +130,20 @@ macro_rules! commands {
                     if res.len() > $max || res.len() < $min {
                         Err(AppError::InvalidPayload)
                     } else {
+                        Ok(res)
+                    }
+                }
+
+                fn from_payload(bytes: &[u8]) -> Result<Self> {
+                    if bytes.len() > $max || bytes.len() < $min || bytes[2] != $command_type {
+                        Err(AppError::InvalidPayload)
+                    } else {
+                        let mut res = Self::default();
+                        res.client_command_id = <u16>::from_be_bytes(bytes[0..2].try_into()?);
+                        $({
+                            res.$name = <$type>::from_be_bytes(bytes[$index..$index + std::mem::size_of::<$type>()].try_into()?);
+                        })*
+                        // todo!();
                         Ok(res)
                     }
                 }
