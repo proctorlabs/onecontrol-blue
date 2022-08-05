@@ -4,6 +4,8 @@ pub type Result<T> = std::result::Result<T, AppError>;
 pub enum AppError {
     InvalidPayload,
     InvalidCommand(u8),
+    IncorrectDataSize,
+    CRCFailure,
     Generic(String),
 }
 

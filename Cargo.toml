@@ -12,6 +12,7 @@ flexi_logger = { version = "0.22", features = ["use_chrono_for_offset"] }
 anyhow = { version = "1.0" }
 lazy_static = { version = "1.4" }
 derive_more = { version = "0.99" }
+num_enum = "0.5"
 
 # CLI
 clap = { version = "3.2", features = ["derive"] }
@@ -28,6 +29,3 @@ bluer = { version = "0.15", features = ["bluetoothd"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 serde_yaml = { version = "0.9" }
-
-# Encoding
-cobs = { version = "0.2" }
