@@ -1,5 +1,4 @@
-use super::Encodable;
-use crate::encoding::COBS;
+use super::*;
 use crate::error::*;
 
 pub trait CommandTrait: Sized {
@@ -9,16 +8,6 @@ pub trait CommandTrait: Sized {
 
     fn to_payload(&self) -> Result<Vec<u8>>;
     fn from_payload(bytes: &[u8]) -> Result<Self>;
-
-    fn encode(&self) -> Result<Vec<u8>> {
-        let payload = self.to_payload()?;
-        COBS::encode(&payload)
-    }
-
-    fn decode(bytes: &[u8]) -> Result<Self> {
-        let decoded = COBS::decode(bytes)?;
-        Self::from_payload(&decoded)
-    }
 }
 
 impl std::convert::From<CommandType> for u8 {
@@ -205,25 +194,25 @@ commands! {
     GetDevicePid (18; 7..7) {
         device_table_id: u8 [3],
         device_id: u8 [4],
-        pid: u16 [5],
+        pid: ParameterID [5],
     }
     SetDevicePid (19; 9..15) {
         device_table_id: u8 [3],
         device_id: u8 [4],
-        pid: u16 [5],
+        pid: ParameterID [5],
         session_id: u16 [7],
         // Value @ 9, variable size 0-6
     }
     GetDevicePidWithAddress (20; 9..9) {
         device_table_id: u8 [3],
         device_id: u8 [4],
-        pid: u16 [5],
+        pid: ParameterID [5],
         pid_address: u16 [7],
     }
     SetDevicePidWithAddress (21; 11..15) {
         device_table_id: u8 [3],
         device_id: u8 [4],
-        pid: u16 [5],
+        pid: ParameterID [5],
         session_id: u16 [7],
         pid_address: u16 [9],
         // Value @ 11, variable size 0-4
@@ -265,9 +254,9 @@ commands! {
         options: u8 [7],
     }
     ActionSwitch (64; 5..5) {
-        device_table_id: u8 [3],
-        device_id: u8 [4],
-        first_device_id: u8 [5],
+        device_table_id: u8 [3], //1
+        device_state: OnOff [4],
+        first_device_id: u8 [5], //7
     }
     ActionMovement (65; 6..6) {
         device_table_id: u8 [3],

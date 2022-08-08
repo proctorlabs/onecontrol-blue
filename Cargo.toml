@@ -13,6 +13,8 @@ anyhow = { version = "1.0" }
 lazy_static = { version = "1.4" }
 derive_more = { version = "0.99" }
 num_enum = "0.5"
+uuid = "1.1"
+hex-literal = "0.3"
 
 # CLI
 clap = { version = "3.2", features = ["derive"] }

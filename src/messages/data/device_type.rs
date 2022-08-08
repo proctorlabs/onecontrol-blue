@@ -1,7 +1,11 @@
+use super::*;
+
 #[allow(dead_code)]
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Default, Debug, Display, PartialEq, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum DeviceType {
+    #[default]
+    Unknown = 0,
     Generic = 1,
     Tablet = 2,
     LatchingRelay = 3,
