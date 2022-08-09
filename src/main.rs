@@ -7,17 +7,18 @@ extern crate derive_more;
 #[macro_use]
 extern crate hex_literal;
 
-use args::*;
-use bluetooth::BluetoothManager;
-use error::Result;
-use flexi_logger::{AdaptiveFormat, Logger};
-use std::str::FromStr;
-
+mod app;
 mod args;
 mod bluetooth;
 mod encoding;
 mod error;
 mod messages;
+mod onecontrol;
+
+use args::*;
+use error::*;
+use flexi_logger::{AdaptiveFormat, Logger};
+use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,14 +33,7 @@ async fn main() -> Result<()> {
         .set_palette("196;208;31;8;59".into())
         .start()?;
 
-    let bluetooth = BluetoothManager::new(args.device.clone()).await?;
-    bluetooth.start().await?;
-    tokio::task::spawn(async move {
-        loop {
-            let dat = bluetooth.recv().await.unwrap();
-            info!("Received {:?}", dat);
-        }
-    });
-    tokio::signal::ctrl_c().await?;
+    let app = app::App::new(args).await?;
+    app.run().await?;
     Ok(())
 }

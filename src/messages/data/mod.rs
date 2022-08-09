@@ -8,6 +8,6 @@ mod param_id;
 
 pub use device_type::*;
 // pub use dtc_id::*;
-pub use event_type::*;
+// pub use event_type::*;
 pub use on_off::*;
 pub use param_id::*;

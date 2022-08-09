@@ -1,11 +1,12 @@
-mod commands;
-mod data;
-mod events;
+pub mod commands;
+pub mod data;
+pub mod events;
 
 use crate::error::*;
 pub use commands::*;
 pub use data::*;
 pub use events::*;
+use fixed::{types::extra::U8, FixedU16};
 
 pub trait Encodable: Sized {
     fn from_data(data: &[u8]) -> Result<Self>;
@@ -56,11 +57,12 @@ macro_rules! encodable_enum {
 encodable_primitive! {
     u8:1, u16:2, u32:4, u64:8,
     i8:1, i16:2, i32:4, i64:8,
+    FixedU16<U8>:2,
 }
 
 encodable_enum! {
     OnOff as u8,
     ParameterID as u16,
-    EventType as u8,
+    // EventType as u8,
     DeviceType as u8,
 }

@@ -119,13 +119,13 @@ impl BluetoothManager {
         for service in device.services().await? {
             let uuid = service.uuid().await?;
             if uuid == service_uuid {
-                info!("Found service with ID {}", service_uuid);
+                debug!("Found service with ID {}", service_uuid);
                 for char in service.characteristics().await? {
                     let uuid = char.uuid().await?;
                     if uuid == char_uuid {
-                        info!("Found characteristic with  UUID: {}", &uuid);
+                        debug!("Found characteristic with  UUID: {}", &uuid);
                         let char_flags = char.flags().await?;
-                        info!("Characteristic flags: {:?}", char_flags);
+                        debug!("Characteristic flags: {:?}", char_flags);
                         return Ok(char);
                     }
                 }
@@ -252,18 +252,18 @@ impl BluetoothManager {
             info!("Attempting to connect to device!");
             device.connect().await?;
         }
-        info!("Connected!");
+        info!("Device is connected!");
 
-        // for service in device.services().await? {
-        //     let uuid = service.uuid().await?;
-        //     info!("Found Service UUID: {}", &uuid);
-        // }
+        for service in device.services().await? {
+            let uuid = service.uuid().await?;
+            debug!("Found Service UUID: {}", &uuid);
+        }
 
         if !device.is_paired().await? {
             info!("Attempting to pair with device!");
             device.pair().await?;
         }
-        info!("Paired!");
+        info!("Device is paired!");
         Ok(())
     }
 
