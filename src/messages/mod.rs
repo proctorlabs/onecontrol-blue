@@ -12,6 +12,21 @@ pub trait Encodable: Sized {
     fn from_data(data: &[u8]) -> Result<Self>;
     fn to_data(&self) -> Vec<u8>;
     fn data_size(&self) -> usize;
+
+    fn decode_buffer(data: &[u8]) -> Result<Vec<Self>> {
+        let mut index = 0;
+        let mut result = vec![];
+        while index < data.len() {
+            match Self::from_data(&data[index..]) {
+                Ok(res) => {
+                    index = index + res.data_size();
+                    result.push(res);
+                }
+                Err(_) => break,
+            }
+        }
+        Ok(result)
+    }
 }
 
 macro_rules! encodable_primitive {
@@ -63,6 +78,8 @@ encodable_primitive! {
 encodable_enum! {
     OnOff as u8,
     ParameterID as u16,
-    // EventType as u8,
     DeviceType as u8,
+    ProductID as u16,
+    ProtocolType as u8,
+    FunctionName as u16,
 }

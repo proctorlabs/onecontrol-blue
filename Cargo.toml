@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 # Logging
 log = { version = "0.4" }
-flexi_logger = { version = "0.22", features = ["use_chrono_for_offset"] }
+flexi_logger = { version = "0.23", features = ["use_chrono_for_offset"] }
 
 # Utility
 anyhow = { version = "1.0" }
@@ -23,12 +23,15 @@ rand = "0.8"
 clap = { version = "3.2", features = ["derive"] }
 
 # Async
-tokio = { version = "1.20", features = ["full"] }
+tokio = { version = "1.17", features = ["full"] }
 async-trait = { version = "0.1" }
 futures = { version = "0.3" }
 
 # Bluetooth
 bluer = { version = "0.15", features = ["bluetoothd"] }
+
+# MQTT
+rumqttc = { version = "0.13" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

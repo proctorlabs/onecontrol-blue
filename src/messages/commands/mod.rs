@@ -7,6 +7,7 @@ pub trait CommandTrait: Sized {
     fn max_length(&self) -> usize;
     fn command_type(&self) -> CommandType;
     fn to_payload(&self) -> Result<Vec<u8>>;
+    fn set_command_id(&mut self, cmdid: u16);
 }
 
 pub trait CommandResponseTrait: Sized {
@@ -61,9 +62,10 @@ impl CommandResponseTrait for Event {
     }
 }
 
-macro_rules! impl_cmd_rsp {
-    ($msgrsp:ident ($rspmin:literal .. $rspmax:literal) $success:literal $complete:literal {
+macro_rules! commands {
+    (*RESPONSE $msgrsp:ident ($rspmin:literal .. $rspmax:literal) $success:literal $complete:literal {
         $( $rspname:ident : $rsptype:ty [ $rspindex:literal ] , )*
+        $( << $repname:ident : $reptype:ty [ $repindex:literal ] ,)*
     }) => {
         #[derive(Debug, Default)]
         #[allow(dead_code)]
@@ -71,6 +73,7 @@ macro_rules! impl_cmd_rsp {
             data: Vec<u8>,
             pub client_command_id: u16,
             $( pub $rspname: $rsptype, )*
+            $( pub $repname: Vec<$reptype>, )*
         }
 
         #[allow(dead_code)]
@@ -86,34 +89,26 @@ macro_rules! impl_cmd_rsp {
                 }
                 let client_command_id = <u16>::from_data(bytes[1..3].try_into()?)?;
                 $( let $rspname = <$rsptype>::from_data(bytes[$rspindex..$rspindex + std::mem::size_of::<$rsptype>()].try_into()?)?; )*
+                $( let $repname = <$reptype>::decode_buffer(&bytes[$repindex..])?; )*
                 let data = bytes;
                 Ok(Self{
                     data,
                     client_command_id,
                     $( $rspname, )*
+                    $( $repname, )*
                 })
             }
         }
     };
-}
-
-macro_rules! commands {
     ($(
         $msgname:ident ($command_type:literal ; $min:literal .. $max:literal) {
             $( $name:ident : $type:ty [ $index:literal ] , )*
         } -> $rsp_name:ident :
-        + $rsp_suc_name:ident ($rsp_suc_min:literal .. $rsp_suc_max:literal) {
-            $( $rsp_suc_field_name:ident : $rsp_suc_field_type:ty [ $rsp_suc_field_index:literal ] , )*
-        }
-        - $rsp_fail_name:ident ($rsp_fail_min:literal .. $rsp_fail_max:literal) {
-            $( $rsp_fail_field_name:ident : $rsp_fail_field_type:ty [ $rsp_fail_field_index:literal ] , )*
-        }
-        &+ $rsp_suc_done_name:ident ($rsp_suc_done_min:literal .. $rsp_suc_done_max:literal) {
-            $( $rsp_suc_done_field_name:ident : $rsp_suc_done_field_type:ty [ $rsp_suc_done_field_index:literal ] , )*
-        }
-        &- $rsp_fail_done_name:ident ($rsp_fail_done_min:literal .. $rsp_fail_done_max:literal) {
-            $( $rsp_fail_done_field_name:ident : $rsp_fail_done_field_type:ty [ $rsp_fail_done_field_index:literal ] , )*
-        }
+
+        + $rsp_suc_name:ident ($rsp_suc_min:literal .. $rsp_suc_max:literal) { $( $rsp_suc_content:tt )* }
+        - $rsp_fail_name:ident ($rsp_fail_min:literal .. $rsp_fail_max:literal) { $( $rsp_fail_content:tt )* }
+        &+ $rsp_suc_done_name:ident ($rsp_suc_done_min:literal .. $rsp_suc_done_max:literal) { $( $rsp_suc_done_content:tt )* }
+        &- $rsp_fail_done_name:ident ($rsp_fail_done_min:literal .. $rsp_fail_done_max:literal) { $( $rsp_fail_done_content:tt )* }
     )*) => {
         #[allow(dead_code)]
         #[derive(Debug, Clone, Copy)]
@@ -165,6 +160,12 @@ macro_rules! commands {
                     $( Command::$msgname(inner) => inner.to_payload(), )*
                 }
             }
+
+            fn set_command_id(&mut self, cmdid: u16) {
+                match self {
+                    $( Command::$msgname(inner) => inner.set_command_id(cmdid), )*
+                }
+            }
         }
 
         $(
@@ -196,6 +197,10 @@ macro_rules! commands {
                         Ok(res)
                     }
                 }
+
+                fn set_command_id(&mut self, cmdid: u16) {
+                    self.client_command_id = cmdid;
+                }
             }
 
             impl std::convert::From<$msgname> for Command {
@@ -203,6 +208,7 @@ macro_rules! commands {
             }
 
             #[allow(dead_code)]
+            #[derive(Debug)]
             pub enum $rsp_name {
                 Success($rsp_suc_name),
                 Failure($rsp_fail_name),
@@ -261,29 +267,10 @@ macro_rules! commands {
                 }
             }
 
-            impl_cmd_rsp! {
-                $rsp_suc_name ($rsp_suc_min .. $rsp_suc_max) true false {
-                    $( $rsp_suc_field_name: $rsp_suc_field_type [$rsp_suc_field_index], )*
-                }
-            }
-
-            impl_cmd_rsp! {
-                $rsp_fail_name ($rsp_fail_min .. $rsp_fail_max) false false {
-                    $( $rsp_fail_field_name: $rsp_fail_field_type [$rsp_fail_field_index], )*
-                }
-            }
-
-            impl_cmd_rsp! {
-                $rsp_suc_done_name ($rsp_suc_done_min .. $rsp_suc_done_max) true true {
-                    $( $rsp_suc_done_field_name: $rsp_suc_done_field_type [$rsp_suc_done_field_index], )*
-                }
-            }
-
-            impl_cmd_rsp! {
-                $rsp_fail_done_name ($rsp_fail_done_min .. $rsp_fail_done_max) false true {
-                    $( $rsp_fail_done_field_name: $rsp_fail_done_field_type [$rsp_fail_done_field_index], )*
-                }
-            }
+            commands! { *RESPONSE $rsp_suc_name       ($rsp_suc_min .. $rsp_suc_max)             true  false { $( $rsp_suc_content       )* } }
+            commands! { *RESPONSE $rsp_fail_name      ($rsp_fail_min .. $rsp_fail_max)           false false { $( $rsp_fail_content      )* } }
+            commands! { *RESPONSE $rsp_suc_done_name  ($rsp_suc_done_min .. $rsp_suc_done_max)   true  true  { $( $rsp_suc_done_content  )* } }
+            commands! { *RESPONSE $rsp_fail_done_name ($rsp_fail_done_min .. $rsp_fail_done_max) false true  { $( $rsp_fail_done_content )* } }
         )*
     };
 }
@@ -295,10 +282,11 @@ commands! {
         start_device_id: u8 [4],
         max_device_request_count: u8 [5],
     } -> GetDevicesResponse:
-    + GetDevicesResponseSuccess (7..7) {
+    + GetDevicesResponseSuccess (7..384) {
         device_table_id: u8 [4],
         start_device_id: u8 [5],
         device_count: u8 [6],
+        << devices: Device [7],
     }
     - GetDevicesResponseFailure (4..4) {}
     &+ GetDevicesResponseSuccessCompleted (9..9) {
@@ -312,10 +300,11 @@ commands! {
         start_device_id: u8 [4],
         max_device_request_count: u8 [5],
     } -> GetDevicesMetadataResponse:
-    + GetDevicesMetadataResponseSuccess (7..7) {
+    + GetDevicesMetadataResponseSuccess (7..384) {
         device_table_id: u8 [4],
         start_device_id: u8 [5],
         device_count: u8 [6],
+        << devices: DeviceMetadata [7],
     }
     - GetDevicesMetadataResponseFailure (4..4) {}
     &+ GetDevicesMetadataResponseSuccessCompleted (9..9) {

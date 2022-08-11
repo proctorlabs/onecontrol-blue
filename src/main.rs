@@ -13,6 +13,7 @@ mod bluetooth;
 mod encoding;
 mod error;
 mod messages;
+mod mqtt;
 mod onecontrol;
 
 use args::*;
