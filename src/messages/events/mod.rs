@@ -1,5 +1,5 @@
 use crate::error::*;
-use crate::messages::Encodable;
+use crate::messages::*;
 use fixed::{types::extra::U8, FixedU16};
 use num_enum::IntoPrimitive;
 
@@ -14,8 +14,9 @@ pub trait EventTrait: Sized {
 macro_rules! events {
     ($(
         $msgname:ident ($command_type:literal ; $min:literal .. $max:literal) {
-            $( $name:ident : $type:ty [ $index:literal ] , )
-        *}
+            $( $name:ident : $type:ty [ $index:literal ] , )*
+            $( << $repname:ident : $reptype:ty [ $repindex:literal ] , )*
+        }
     )*) => {
         #[allow(dead_code)]
         #[derive(Debug, Default, Display, IntoPrimitive, PartialEq, Clone, Copy)]
@@ -83,6 +84,7 @@ macro_rules! events {
             pub struct $msgname {
                 data: Vec<u8>,
                 $( pub $name: $type, )*
+                $( pub $repname: Vec<$reptype>, )*
             }
 
             #[allow(dead_code)]
@@ -95,8 +97,9 @@ macro_rules! events {
                     if data.len() > $max || data.len() < $min || data[0] != $command_type {
                         Err(AppError::InvalidPayload)
                     } else {
-                        $( let $name = <$type>::from_data(data[$index..$index + std::mem::size_of::<$type>()].try_into()?)?; )*
-                        Ok(Self { data, $( $name, )* })
+                        $( let $name = <$type>::from_data(data[$index..].try_into()?)?; )*
+                        $( let $repname = <$reptype>::decode_buffer(&data[$repindex..])?; )*
+                        Ok(Self { data, $( $name, )* $( $repname, )* })
                     }
                 }
 
@@ -126,31 +129,28 @@ events! {
         client_command_id: u16 [1],
         status: u8 [3],
     }
-    DeviceOnlineStatus (3; 3..200) { // Length depends on number of devices
+    DeviceOnlineStatus (3; 3..384) { // Length depends on number of devices
         device_table_id: u8 [1],
         device_count: u8 [2],
-        // device status starts at byte[3], 1 bit per device indicating online/offline
+        online_status: BitFlags [3], // 1 bit per device indicating online/offline
     }
     DeviceLockStatus (4; 8..100) {
         system_lockout_level: u8 [1],
         chassis_info: u8 [2],
         towable_info: u8 [3],
         towable_battery_voltage: u8 [4],
-        towable_break_voltage: u8 [5],
+        towable_brake_voltage: u8 [5],
         device_table_id: u8 [6],
         device_count: u8 [7],
-        // device status starts at byte[8], 1 bit per device indicating lockout
+        lockout_status: BitFlags [8], // 1 bit per device indicating lockout
     }
     RelayBasicLatchingStatusType1 (5; 1..100) {
         // TODO
     }
+    // data: [6, 1, 8, 128, 255, 0, 0, 0, 0], device_table_id: 1, device_index: 8, status: 128, start_position: 255, amp_draw: 0, dtc: 0 })
     RelayBasicLatchingStatusType2 (6; 9..9) {
         device_table_id: u8 [1],
-        device_index: u8 [2],
-        status: u8 [3],
-        start_position: u8 [4],
-        amp_draw: u16 [5],
-        dtc: u16 [7],
+        << relays: RelayStateType2 [2],
     }
     RvStatus (7; 6..6) {
         battery_voltage: FixedU16<U8> [1],
@@ -163,7 +163,7 @@ events! {
     HvacStatus (11; 1..100) {}
     TankSensorStatus (12; 2..200) {
         device_table_id: u8 [1],
-        // remaining length is repeating: 1 byte device ID, 1 byte percentage
+        << tank_statuses: TankStatus [2],
     }
     RelayHBridgeMomentaryStatusType1 (13; 1..100) {}
     RelayHBridgeMomentaryStatusType2 (14; 1..100) {}
@@ -174,14 +174,14 @@ events! {
     LevelerConsoleText (17; 1..100) {
         device_table_id: u8 [1],
         device_count: u8 [2],
-        // Console text starts at [3]
+        console_text: Vec<u8> [3],
     }
     Leveler1DeviceStatus (18; 1..100) {}
     Leveler3DeviceStatus (19; 1..100) {}
     DeviceSessionStatus (26; 3..100) {
         device_table_id: u8 [1],
         device_count: u8 [2],
-        // session open status at byte[3], 1 bit per device
+        session_open_status: BitFlags [3], // 1 bit per device
     }
     RealTimeClock (32; 9..9) {
         seconds_from_epoch: u32 [1],
@@ -200,6 +200,43 @@ events! {
     HostDebug (102; 1..100) {}
 }
 
+impl RvStatus {
+    pub fn battery_voltage(&self) -> Option<FixedU16<U8>> {
+        if (self.feature_index & 0x01) == 0x01 {
+            Some(self.battery_voltage)
+        } else {
+            None
+        }
+    }
+
+    pub fn external_temperature(&self) -> Option<FixedU16<U8>> {
+        if (self.feature_index & 0x02) == 0x02 {
+            Some(self.external_temperature)
+        } else {
+            None
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl DeviceLockStatus {
+    pub fn get_park_brake_engaged(&self) -> bool {
+        (self.chassis_info & 0x02) == 0x02
+    }
+
+    pub fn get_ignition_on(&self) -> bool {
+        (self.chassis_info & 0x04) == 0x04
+    }
+
+    pub fn get_battery_voltage(&self) -> f32 {
+        f32::from(self.towable_battery_voltage) / 16f32
+    }
+
+    pub fn get_brake_voltage(&self) -> f32 {
+        f32::from(self.towable_brake_voltage) / 16f32
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -207,7 +244,7 @@ mod test {
     /// Validates that the unlock process works as expected
     fn parse_payload() -> Result<()> {
         let payload = vec![1u8, 5, 0, 16, 1, 102, 63, 39, 130, 5, 20, 33, 131];
-        let event = Event::from_payload(payload)?;
+        let event = <Event as EventTrait>::from_payload(payload)?;
         println!("Event: {:?}", event);
         Ok(())
     }

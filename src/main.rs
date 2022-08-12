@@ -21,7 +21,7 @@ use error::*;
 use flexi_logger::{AdaptiveFormat, Logger};
 use std::str::FromStr;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() -> Result<()> {
     let args = Args::parse();
     let mut builder = flexi_logger::LogSpecification::builder();

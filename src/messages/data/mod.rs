@@ -8,10 +8,10 @@ pub use device_metadata::*;
 pub use device_type::*;
 pub use function_name::*;
 pub use misc::*;
-pub use on_off::*;
 pub use param_id::*;
 pub use product_id::*;
 pub use protocol_type::*;
+pub use states::*;
 
 #[macro_export]
 macro_rules! define_encodable_struct {
@@ -81,7 +81,7 @@ mod device_metadata;
 mod device_type;
 mod function_name;
 mod misc;
-mod on_off;
 mod param_id;
 mod product_id;
 mod protocol_type;
+mod states;

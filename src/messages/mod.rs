@@ -29,6 +29,7 @@ pub trait Encodable: Sized {
     }
 }
 
+/// Implement Encodable trait for primitive values
 macro_rules! encodable_primitive {
     ($( $type:ty : $size:literal ,)*) => {$(
         impl Encodable for $type {
@@ -51,6 +52,7 @@ macro_rules! encodable_primitive {
     )*}
 }
 
+/// Implement encodable trait for a fixed-size variant-only enum (e.g. an enum with #[repr()])
 macro_rules! encodable_enum {
     ($( $type:ty as $astype:ty ,)*) => {$(
         impl Encodable for $type {
@@ -69,6 +71,20 @@ macro_rules! encodable_enum {
     )*}
 }
 
+impl Encodable for Vec<u8> {
+    fn from_data(data: &[u8]) -> Result<Self> {
+        Ok(data.into())
+    }
+
+    fn to_data(&self) -> Vec<u8> {
+        self.clone()
+    }
+
+    fn data_size(&self) -> usize {
+        self.len()
+    }
+}
+
 encodable_primitive! {
     u8:1, u16:2, u32:4, u64:8,
     i8:1, i16:2, i32:4, i64:8,
@@ -82,4 +98,5 @@ encodable_enum! {
     ProductID as u16,
     ProtocolType as u8,
     FunctionName as u16,
+    CommandType as u8,
 }

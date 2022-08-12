@@ -24,20 +24,6 @@ impl std::convert::From<CommandType> for u8 {
     }
 }
 
-impl Encodable for CommandType {
-    fn from_data(data: &[u8]) -> Result<Self> {
-        data[0].try_into()
-    }
-
-    fn to_data(&self) -> Vec<u8> {
-        vec![*self as u8]
-    }
-
-    fn data_size(&self) -> usize {
-        1
-    }
-}
-
 impl CommandResponseTrait for Event {
     fn min_length(&self) -> usize {
         0
@@ -87,8 +73,8 @@ macro_rules! commands {
                 if bytes.len() < $rspmin || bytes.len() > $rspmax {
                     return Err(AppError::InvalidPayload);
                 }
-                let client_command_id = <u16>::from_data(bytes[1..3].try_into()?)?;
-                $( let $rspname = <$rsptype>::from_data(bytes[$rspindex..$rspindex + std::mem::size_of::<$rsptype>()].try_into()?)?; )*
+                let client_command_id = <u16>::from_data(bytes[1..].try_into()?)?;
+                $( let $rspname = <$rsptype>::from_data(bytes[$rspindex..].try_into()?)?; )*
                 $( let $repname = <$reptype>::decode_buffer(&bytes[$repindex..])?; )*
                 let data = bytes;
                 Ok(Self{
@@ -288,7 +274,7 @@ commands! {
         device_count: u8 [6],
         << devices: Device [7],
     }
-    - GetDevicesResponseFailure (4..4) {}
+    - GetDevicesResponseFailure (4..5) {}
     &+ GetDevicesResponseSuccessCompleted (9..9) {
         device_table_crc: u32 [4],
         device_count: u8 [8],
@@ -306,7 +292,7 @@ commands! {
         device_count: u8 [6],
         << devices: DeviceMetadata [7],
     }
-    - GetDevicesMetadataResponseFailure (4..4) {}
+    - GetDevicesMetadataResponseFailure (4..5) {}
     &+ GetDevicesMetadataResponseSuccessCompleted (9..9) {
         device_metadata_table_crc: u32 [4],
         device_count: u8 [8],
