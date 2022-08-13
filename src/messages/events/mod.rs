@@ -148,7 +148,7 @@ events! {
         // TODO
     }
     // data: [6, 1, 8, 128, 255, 0, 0, 0, 0], device_table_id: 1, device_index: 8, status: 128, start_position: 255, amp_draw: 0, dtc: 0 })
-    RelayBasicLatchingStatusType2 (6; 9..9) {
+    RelayBasicLatchingStatusType2 (6; 9..384) {
         device_table_id: u8 [1],
         << relays: RelayStateType2 [2],
     }
@@ -166,7 +166,10 @@ events! {
         << tank_statuses: TankStatus [2],
     }
     RelayHBridgeMomentaryStatusType1 (13; 1..100) {}
-    RelayHBridgeMomentaryStatusType2 (14; 1..100) {}
+    RelayHBridgeMomentaryStatusType2 (14; 9..384) {
+        device_table_id: u8 [1],
+        << relays: RelayStateType2 [2],
+    }
     HourMeterStatus (15; 1..100) {
         // TODO
     }

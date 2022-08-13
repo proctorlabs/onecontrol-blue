@@ -23,9 +23,30 @@ define_encodable_struct! {
     }
 }
 
+#[allow(dead_code)]
 impl RelayStateType2 {
     pub fn is_on(&self) -> bool {
         (self.status & 0x01) == 0x01
+    }
+
+    pub fn is_forward_allowed(&self) -> bool {
+        (self.status & 0x80) == 0x80
+    }
+
+    pub fn is_forward_active(&self) -> bool {
+        ((self.status & 0x02) == 0x02) && !self.is_reverse_active()
+    }
+
+    pub fn is_reverse_allowed(&self) -> bool {
+        (self.status & 0x40) == 0x40
+    }
+
+    pub fn is_reverse_active(&self) -> bool {
+        (self.status & 0x03) == 0x03
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        !self.is_forward_active() && !self.is_reverse_active()
     }
 
     pub fn on_off(&self) -> OnOff {

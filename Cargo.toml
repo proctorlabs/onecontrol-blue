@@ -1,5 +1,5 @@
 [package]
-name = "onecontrol-bridge"
+name = "onecontrol-mqtt-bridge"
 version = "0.1.0"
 edition = "2021"
 
@@ -20,7 +20,7 @@ dashmap = "5.3"
 rand = "0.8"
 
 # CLI
-clap = { version = "3.2", features = ["derive"] }
+clap = { version = "3.2", features = ["derive", "env"] }
 
 # Async
 tokio = { version = "1.17", features = ["full"] }

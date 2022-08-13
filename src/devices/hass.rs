@@ -46,6 +46,7 @@ HassPayload! {
         away_mode_command_topic:String => "away_mode_cmd_t" "away_mode_command_topic",
         away_mode_state_template:String => "away_mode_stat_tpl" "away_mode_state_template",
         away_mode_state_topic:String => "away_mode_stat_t" "away_mode_state_topic",
+        base_topic: String => "~" "~",
         blue_template:String => "b_tpl" "blue_template",
         brightness_command_topic:String => "bri_cmd_t" "brightness_command_topic",
         brightness_command_template:String => "bri_cmd_tpl" "brightness_command_template",

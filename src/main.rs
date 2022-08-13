@@ -7,9 +7,13 @@ extern crate derive_more;
 #[macro_use]
 extern crate hex_literal;
 
+#[macro_use]
+mod macros;
+
 mod app;
 mod args;
 mod bluetooth;
+mod devices;
 mod encoding;
 mod error;
 mod messages;
@@ -26,7 +30,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let mut builder = flexi_logger::LogSpecification::builder();
     builder.default(flexi_logger::LevelFilter::Info).module(
-        "onecontrol_bridge",
+        "onecontrol_mqtt_bridge",
         flexi_logger::LevelFilter::from_str(&args.log_level.as_str())?,
     );
     Logger::with(builder.build())

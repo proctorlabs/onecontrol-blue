@@ -213,7 +213,7 @@ impl BluetoothManager {
 
     /// Scan for the selected device and make it active
     async fn do_scan(&self) -> Result<()> {
-        info!(
+        debug!(
             "Discovering devices using Bluetooth adapter {}",
             self.adapter.name()
         );
@@ -232,7 +232,7 @@ impl BluetoothManager {
                             }
                             let props = device.all_properties().await?;
                             for prop in props {
-                                info!("    {:?}", &prop);
+                                debug!("    {:?}", &prop);
                             }
                             *self.device.write().await = Some(device);
                             return Ok(());
