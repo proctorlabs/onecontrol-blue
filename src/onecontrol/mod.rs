@@ -1,5 +1,7 @@
 use crate::bluetooth::BluetoothManager;
+use crate::devices::DeviceEntity;
 use crate::messages::{events, *};
+use crate::mqtt::MqttManager;
 use crate::*;
 use dashmap::DashMap;
 use fixed::{types::extra::U8, FixedU16};
@@ -20,10 +22,19 @@ pub enum DeviceState {
     Percentage(u8),
 }
 
+impl DeviceState {
+    pub fn state_string(&self) -> String {
+        match self {
+            DeviceState::Unknown => "unknown".into(),
+            DeviceState::Switch(onoff) => onoff.to_string(),
+            DeviceState::Percentage(pc) => format!("{}%", pc),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
-struct DeviceEntry {
-    pub device: RwLock<Option<Device>>,
-    pub metadata: RwLock<Option<DeviceMetadata>>,
+pub struct DeviceEntry {
+    pub entity: DeviceEntity,
     pub state: RwLock<DeviceState>,
 }
 
@@ -38,6 +49,7 @@ struct DeviceTable {
 #[derive(Debug)]
 pub struct OnecontrolInner {
     bluetooth: BluetoothManager,
+    mqtt: RwLock<Option<MqttManager>>,
     msgnum: AtomicU16,
     cmdmap: DashMap<u16, mpsc::UnboundedSender<CommandResponse>>,
     device_tables: DashMap<u8, Arc<DeviceTable>>,
@@ -58,7 +70,16 @@ impl Onecontrol {
             device_tables: Default::default(),
             battery_voltage: Default::default(),
             external_temperature: Default::default(),
+            mqtt: Default::default(),
         })))
+    }
+
+    pub async fn set_mqtt_manager(&self, mqtt: MqttManager) {
+        *self.mqtt.write().await = Some(mqtt);
+    }
+
+    async fn get_mqtt(&self) -> MqttManager {
+        self.mqtt.read().await.clone().unwrap()
     }
 
     /// Start the main loop to process incoming commands from the device
@@ -66,6 +87,16 @@ impl Onecontrol {
         tokio::task::spawn(self.clone().run_loop());
         tokio::task::spawn(self.clone().run_timers());
         Ok(())
+    }
+
+    pub async fn get_devices(&self) -> Result<Vec<Arc<DeviceEntry>>> {
+        let mut result = vec![];
+        for table in self.device_tables.iter() {
+            for device in table.devices.iter() {
+                result.push(device.clone());
+            }
+        }
+        Ok(result)
     }
 
     /// Send a command to get device metadata from the specified device table
@@ -81,9 +112,19 @@ impl Onecontrol {
             match response {
                 GetDevicesMetadataResponse::Success(data) => {
                     for device in data.devices {
-                        let device_entry =
+                        let (is_new, device_entry) =
                             self.get_device_defaulted(device_table_id, next_device_id);
-                        *device_entry.metadata.write().await = Some(device);
+                        device_entry
+                            .entity
+                            .update_from_device_metadata(device, device_table_id, next_device_id)
+                            .await;
+                        if is_new {
+                            self.get_mqtt()
+                                .await
+                                .publish_device_info(&device_entry.entity)
+                                .await
+                                .unwrap_or_default();
+                        }
                         next_device_id += 1;
                     }
                 }
@@ -111,9 +152,19 @@ impl Onecontrol {
             match response {
                 GetDevicesResponse::Success(data) => {
                     for device in data.devices {
-                        let device_entry =
+                        let (is_new, device_entry) =
                             self.get_device_defaulted(device_table_id, next_device_id);
-                        *device_entry.device.write().await = Some(device);
+                        device_entry
+                            .entity
+                            .update_from_device_info(device, device_table_id, next_device_id)
+                            .await;
+                        if is_new {
+                            self.get_mqtt()
+                                .await
+                                .publish_device_info(&device_entry.entity)
+                                .await
+                                .unwrap_or_default();
+                        }
                         next_device_id += 1;
                     }
                 }
@@ -135,21 +186,32 @@ impl Onecontrol {
         self.device_tables.get(&device_table_id).unwrap().clone()
     }
 
-    fn get_device_defaulted(&self, device_table_id: u8, device_id: u8) -> Arc<DeviceEntry> {
+    fn get_device_defaulted(&self, device_table_id: u8, device_id: u8) -> (bool, Arc<DeviceEntry>) {
         let table = self.get_device_table_defaulted(device_table_id);
         match table.devices.clone().get(&device_id) {
-            Some(d) => (*&d).clone(),
+            Some(d) => (false, (*&d).clone()),
             None => {
                 let newval: Arc<DeviceEntry> = Default::default();
                 table.devices.insert(device_id, newval.clone());
-                newval
+                (true, newval)
             }
         }
     }
 
-    async fn set_device_state(&self, device_table: u8, device_id: u8, state: DeviceState) {
-        let device_entry = self.get_device_defaulted(device_table, device_id);
+    async fn set_device_state(
+        &self,
+        device_table: u8,
+        device_id: u8,
+        state: DeviceState,
+    ) -> Result<()> {
+        let (_, device_entry) = self.get_device_defaulted(device_table, device_id);
+        let state_str = state.state_string();
         *device_entry.state.write().await = state;
+        self.get_mqtt()
+            .await
+            .publish_device_state(&device_entry.entity, &state_str)
+            .await?;
+        Ok(())
     }
 
     /// This is the timer instance for polling devices and other background tasks
@@ -221,7 +283,8 @@ impl Onecontrol {
                 status.device_id,
                 DeviceState::Percentage(status.percentage),
             )
-            .await;
+            .await
+            .unwrap_or_default();
         }
     }
 
@@ -233,7 +296,8 @@ impl Onecontrol {
                 relay.device_id,
                 DeviceState::Switch(relay.on_off()),
             )
-            .await;
+            .await
+            .unwrap_or_default();
         }
     }
 

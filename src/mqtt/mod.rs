@@ -1,4 +1,5 @@
 use crate::args::Args;
+use crate::devices::DeviceEntity;
 use crate::{error::*, onecontrol::Onecontrol};
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet};
 use rumqttc::{LastWill, QoS};
@@ -29,6 +30,19 @@ impl MqttManager {
 
     pub async fn start(&self) -> Result<()> {
         task::spawn(self.clone().run_loop());
+        Ok(())
+    }
+
+    fn base_topic(&self) -> &str {
+        &self.args.base_topic
+    }
+
+    pub async fn publish_device_info(&self, device: &DeviceEntity) -> Result<()> {
+        let discovery = device.to_discovery(self.base_topic().to_string()).await;
+        Ok(())
+    }
+
+    pub async fn publish_device_state(&self, device: &DeviceEntity, state: &str) -> Result<()> {
         Ok(())
     }
 
@@ -88,11 +102,23 @@ impl MqttManager {
             let res: Result<()> = async {
                 match eventloop.poll().await {
                     Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                        self.subscribe(&format!("{}#", self.args.base_topic)).await?;
-                        self.send(&format!("{}status", self.args.base_topic), "online", true, QoS::AtLeastOnce).await?;
-                        Ok(())}
+                        self.subscribe(&format!("{}#", self.args.base_topic))
+                            .await?;
+                        self.send(
+                            &format!("{}status", self.args.base_topic),
+                            "online",
+                            true,
+                            QoS::AtLeastOnce,
+                        )
+                        .await?;
+                        Ok(())
+                    }
                     Ok(Event::Incoming(Packet::Publish(pubevent))) => {
-                        info!("Received on topic {}: {}", pubevent.topic, String::from_utf8(pubevent.payload.into())?);
+                        info!(
+                            "Received on topic {}: {}",
+                            pubevent.topic,
+                            String::from_utf8(pubevent.payload.into())?
+                        );
                         Ok(())
                     }
                     Ok(evt) => {

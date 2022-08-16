@@ -16,6 +16,7 @@ impl App {
         let bluetooth = BluetoothManager::new(args.device.clone()).await?;
         let onecontrol = Onecontrol::new(bluetooth.clone()).await?;
         let mqtt = MqttManager::new(onecontrol.clone(), args).await?;
+        onecontrol.set_mqtt_manager(mqtt.clone()).await;
         Ok(Self(Arc::new(AppInner {
             bluetooth,
             onecontrol,

@@ -5,7 +5,9 @@ use super::*;
 #[repr(u8)]
 pub enum OnOff {
     #[default]
+    #[display(fmt = "off")]
     Off = 0,
+    #[display(fmt = "on")]
     On = 1,
 }
 

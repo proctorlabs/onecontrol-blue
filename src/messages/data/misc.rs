@@ -97,6 +97,16 @@ impl BitFlags {
     }
 }
 
+impl std::fmt::Display for MacAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self[0], self[1], self[2], self[3], self[4], self[5]
+        )
+    }
+}
+
 define_array_struct! {
     MacAddress[6],
 }
