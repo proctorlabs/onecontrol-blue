@@ -1,6 +1,6 @@
 use crate::args::Args;
 use crate::devices::DeviceEntity;
-use crate::onecontrol::Onecontrol;
+use crate::rvlink::RVLink;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet};
 use rumqttc::{LastWill, QoS};
 use rvlink_common::error::*;
@@ -15,15 +15,15 @@ pub struct MqttManager(Arc<MqttManagerInner>);
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct MqttManagerInner {
-    onecontrol: Onecontrol,
+    rvlink: RVLink,
     args: Args,
     client: RwLock<Option<AsyncClient>>,
 }
 
 impl MqttManager {
-    pub async fn new(onecontrol: Onecontrol, args: Args) -> Result<Self> {
+    pub async fn new(rvlink: RVLink, args: Args) -> Result<Self> {
         Ok(MqttManager(Arc::new(MqttManagerInner {
-            onecontrol,
+            rvlink,
             args,
             client: Default::default(),
         })))

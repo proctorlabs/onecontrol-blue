@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, sleep, Duration};
 
 #[derive(Debug, Deref, Clone)]
-pub struct Onecontrol(Arc<OnecontrolInner>);
+pub struct RVLink(Arc<RVLinkInner>);
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum DeviceState {
@@ -47,7 +47,7 @@ struct DeviceTable {
 }
 
 #[derive(Debug)]
-pub struct OnecontrolInner {
+pub struct RVLinkInner {
     bluetooth: BluetoothManager,
     mqtt: RwLock<Option<MqttManager>>,
     msgnum: AtomicU16,
@@ -58,12 +58,12 @@ pub struct OnecontrolInner {
 }
 
 #[allow(dead_code)]
-impl Onecontrol {
-    /// Create a new Onecontrol manager instance
+impl RVLink {
+    /// Create a new RVLink manager instance
     pub async fn new(bluetooth: BluetoothManager) -> Result<Self> {
         let mut rng = rand::thread_rng();
         let msgnum = AtomicU16::new(rng.gen());
-        Ok(Self(Arc::new(OnecontrolInner {
+        Ok(Self(Arc::new(RVLinkInner {
             bluetooth,
             msgnum,
             cmdmap: Default::default(),
@@ -223,7 +223,7 @@ impl Onecontrol {
         }
     }
 
-    /// This is the primary run loop for the onecontrol manager
+    /// This is the primary run loop for the rvlink manager
     async fn run_loop(self) {
         loop {
             match self.bluetooth.recv().await {
@@ -328,7 +328,7 @@ impl Onecontrol {
         (*self.external_temperature.read().await).unwrap_or_default()
     }
 
-    /// Send a command to the onecontrol device
+    /// Send a command to the rvlink device
     pub async fn send<T: CommandTrait>(&self, mut cmd: T) -> Result<Vec<T::ResponseType>> {
         let msgnum = self.msgnum.fetch_add(1, Ordering::SeqCst);
         let (sender, mut receiver) = mpsc::unbounded_channel();

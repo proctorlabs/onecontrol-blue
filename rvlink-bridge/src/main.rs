@@ -18,7 +18,7 @@ mod args;
 mod bluetooth;
 mod devices;
 mod mqtt;
-mod onecontrol;
+mod rvlink;
 
 use args::*;
 use rvlink_common::error::*;
