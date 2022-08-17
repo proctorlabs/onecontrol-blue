@@ -13,7 +13,7 @@ type HmacSha256 = Hmac<Sha256>;
 lazy_static! {
     static ref MACHINEID: String = {
         let machine_uid: String = machine_uid::get().unwrap_or_else(|_| "UNKNOWN".into());
-        let mut mac = HmacSha256::new_from_slice(b"onecontrol-mqtt-bridge")
+        let mut mac = HmacSha256::new_from_slice(b"rvlink-bridge")
             .expect("HMAC can take key of any size");
         mac.update(machine_uid.as_bytes());
         let result = mac.finalize();

@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let mut builder = flexi_logger::LogSpecification::builder();
     builder.default(flexi_logger::LevelFilter::Info).module(
-        "onecontrol_mqtt_bridge",
+        "rvlink_bridge",
         flexi_logger::LevelFilter::from_str(&args.log_level.as_str())?,
     );
     Logger::with(builder.build())

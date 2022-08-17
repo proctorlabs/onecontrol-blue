@@ -87,7 +87,7 @@ impl MqttManager {
     async fn run_loop(self) {
         info!("MQTT handler task is starting...");
         let mut mqttoptions = MqttOptions::new(
-            "onecontrol-mqtt-bridge",
+            "rvlink-bridge",
             self.args.host.clone(),
             self.args.port,
         );

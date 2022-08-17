@@ -41,7 +41,7 @@ pub struct Args {
     #[clap(
         short = 't',
         long,
-        default_value = "onecontrol-mqtt-bridge/",
+        default_value = "rvlink-bridge/",
         env = "BRIDGE_MQTT_BASE_TOPIC"
     )]
     pub base_topic: String,
