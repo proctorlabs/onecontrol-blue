@@ -397,6 +397,13 @@ impl FunctionName {
             | FunctionName::OptionalSlide
             | FunctionName::DoorSideSlide
             | FunctionName::OffDoorSlide => DeviceEntityType::Slide,
+            FunctionName::LpTankRv
+            | FunctionName::LpTankHome
+            | FunctionName::LpTankCabin
+            | FunctionName::LpTankBbq
+            | FunctionName::LpTankGrill
+            | FunctionName::LpTankSubmarine
+            | FunctionName::LpTankOther => DeviceEntityType::LPTank,
             FunctionName::FuelTank
             | FunctionName::GeneratorFuelTank
             | FunctionName::AuxilliaryFuelTank => DeviceEntityType::FuelTank,
@@ -527,47 +534,14 @@ impl FunctionName {
             | FunctionName::ExteriorLight
             | FunctionName::LowerAccentLight
             | FunctionName::UpperAccentLight
+            | FunctionName::JacksLights
+            | FunctionName::InteriorStepLight
+            | FunctionName::ExteriorStepLight
             | FunctionName::DsSecurityLight
             | FunctionName::OdsSecurityLight
             | FunctionName::OverheadFanLight
             | FunctionName::RearBedroomLoftLight => DeviceEntityType::LightSwitch,
-            FunctionName::Unknown
-            | FunctionName::DiagnosticTool
-            | FunctionName::MyrvTablet
-            | FunctionName::GasWaterHeater
-            | FunctionName::ElectricWaterHeater
-            | FunctionName::WaterPump
-            | FunctionName::BathVent
-            | FunctionName::LandingGear
-            | FunctionName::FrontStabilizer
-            | FunctionName::RearStabilizer
-            | FunctionName::TvLift
-            | FunctionName::BedLift
-            | FunctionName::BathVentCover
-            | FunctionName::DoorLock
-            | FunctionName::Generator
-            | FunctionName::Awning
-            | FunctionName::LevelUpLeveler
-            | FunctionName::WaterTankHeater
-            | FunctionName::MyrvTouchscreen
-            | FunctionName::Leveler
-            | FunctionName::VentCover
-            | FunctionName::FrontBedroomVentCover
-            | FunctionName::BedroomVentCover
-            | FunctionName::FrontBathroomVentCover
-            | FunctionName::MainBathroomVentCover
-            | FunctionName::RearBathroomVentCover
-            | FunctionName::KitchenVentCover
-            | FunctionName::LivingRoomVentCover
-            | FunctionName::FourLegTruckCamplerLeveler
-            | FunctionName::SixLegHallEffectEjLeveler
-            | FunctionName::PatioAwning
-            | FunctionName::RearAwning
-            | FunctionName::SideAwning
-            | FunctionName::Jacks
-            | FunctionName::Leveler2
-            | FunctionName::Clock
-            | FunctionName::Tv
+            FunctionName::Tv
             | FunctionName::Dvd
             | FunctionName::BluRay
             | FunctionName::Vcr
@@ -575,41 +549,9 @@ impl FunctionName {
             | FunctionName::Cable
             | FunctionName::Satellite
             | FunctionName::Audio
-            | FunctionName::CdPlayer
-            | FunctionName::Tuner
-            | FunctionName::Radio
-            | FunctionName::Speakers
-            | FunctionName::Game
-            | FunctionName::ClockRadio
-            | FunctionName::Aux
-            | FunctionName::ClimateZone
-            | FunctionName::Fireplace
-            | FunctionName::Thermostat
-            | FunctionName::FreshTankHeater
-            | FunctionName::GreyTankHeater
-            | FunctionName::BlackTankHeater
-            | FunctionName::LpTank
-            | FunctionName::NetworkBridge
-            | FunctionName::EthernetBridge
-            | FunctionName::WifiBridge
-            | FunctionName::InTransitPowerDisconnect
-            | FunctionName::LevelUpUnity
-            | FunctionName::TtLeveler
-            | FunctionName::TravelTrailerLeveler
-            | FunctionName::FifthWheelLeveler
-            | FunctionName::FuelPump
-            | FunctionName::MainClimateZone
-            | FunctionName::BedroomClimateZone
-            | FunctionName::GarageClimateZone
-            | FunctionName::CompartmentLight
-            | FunctionName::TrunkLight
             | FunctionName::BarTv
             | FunctionName::BathroomTv
             | FunctionName::BedroomTv
-            | FunctionName::BunkRoomTv
-            | FunctionName::ExteriorTv
-            | FunctionName::FrontBathroomTv
-            | FunctionName::FrontBedroomTv
             | FunctionName::GarageTv
             | FunctionName::KitchenTv
             | FunctionName::LivingRoomTv
@@ -617,15 +559,6 @@ impl FunctionName {
             | FunctionName::LoungeTv
             | FunctionName::MainTv
             | FunctionName::PatioTv
-            | FunctionName::RearBathroomTv
-            | FunctionName::RearBedroomTv
-            | FunctionName::BathroomDoorLock
-            | FunctionName::BedroomDoorLock
-            | FunctionName::FrontDoorLock
-            | FunctionName::GarageDoorLock
-            | FunctionName::MainDoorLock
-            | FunctionName::PatioDoorLock
-            | FunctionName::RearDoorLock
             | FunctionName::BedroomRadio
             | FunctionName::BunkRoomRadio
             | FunctionName::ExteriorRadio
@@ -648,14 +581,95 @@ impl FunctionName {
             | FunctionName::MainEntertainmentSystem
             | FunctionName::PatioEntertainmentSystem
             | FunctionName::RearBedroomEntertainmentSystem
+            | FunctionName::BunkRoomTv
+            | FunctionName::ExteriorTv
+            | FunctionName::FrontBathroomTv
+            | FunctionName::FrontBedroomTv
+            | FunctionName::CdPlayer
+            | FunctionName::Tuner
+            | FunctionName::Radio
+            | FunctionName::Speakers
+            | FunctionName::Game
+            | FunctionName::ClockRadio
+            | FunctionName::Aux => DeviceEntityType::Switch,
+            FunctionName::RearBathroomTv
+            | FunctionName::RearBedroomTv
+            | FunctionName::BathroomDoorLock
+            | FunctionName::BedroomDoorLock
+            | FunctionName::FrontDoorLock
+            | FunctionName::GarageDoorLock
+            | FunctionName::MainDoorLock
+            | FunctionName::PatioDoorLock
+            | FunctionName::RearDoorLock => DeviceEntityType::DoorLock,
+            FunctionName::PatioAwning
+            | FunctionName::RearAwning
+            | FunctionName::SideAwning
+            | FunctionName::Awning => DeviceEntityType::Awning,
+            FunctionName::Battery
+            | FunctionName::MainBattery
+            | FunctionName::AuxBattery
+            | FunctionName::AuxiliaryBattery
+            | FunctionName::ChassisBattery
+            | FunctionName::HouseBattery
+            | FunctionName::KitchenBattery => DeviceEntityType::Battery,
+            FunctionName::Unknown
+            | FunctionName::DiagnosticTool
+            | FunctionName::MyrvTablet
+            | FunctionName::GasWaterHeater
+            | FunctionName::ElectricWaterHeater
+            | FunctionName::WaterPump
+            | FunctionName::BathVent
+            | FunctionName::LandingGear
+            | FunctionName::FrontStabilizer
+            | FunctionName::RearStabilizer
+            | FunctionName::TvLift
+            | FunctionName::BedLift
+            | FunctionName::BathVentCover
+            | FunctionName::DoorLock
+            | FunctionName::Generator
+            | FunctionName::LevelUpLeveler
+            | FunctionName::WaterTankHeater
+            | FunctionName::MyrvTouchscreen
+            | FunctionName::Leveler
+            | FunctionName::VentCover
+            | FunctionName::FrontBedroomVentCover
+            | FunctionName::BedroomVentCover
+            | FunctionName::FrontBathroomVentCover
+            | FunctionName::MainBathroomVentCover
+            | FunctionName::RearBathroomVentCover
+            | FunctionName::KitchenVentCover
+            | FunctionName::LivingRoomVentCover
+            | FunctionName::FourLegTruckCamplerLeveler
+            | FunctionName::SixLegHallEffectEjLeveler
+            | FunctionName::Jacks
+            | FunctionName::Leveler2
+            | FunctionName::Clock
+            | FunctionName::ClimateZone
+            | FunctionName::Fireplace
+            | FunctionName::Thermostat
+            | FunctionName::FreshTankHeater
+            | FunctionName::GreyTankHeater
+            | FunctionName::BlackTankHeater
+            | FunctionName::LpTank
+            | FunctionName::NetworkBridge
+            | FunctionName::EthernetBridge
+            | FunctionName::WifiBridge
+            | FunctionName::InTransitPowerDisconnect
+            | FunctionName::LevelUpUnity
+            | FunctionName::TtLeveler
+            | FunctionName::TravelTrailerLeveler
+            | FunctionName::FifthWheelLeveler
+            | FunctionName::FuelPump
+            | FunctionName::MainClimateZone
+            | FunctionName::BedroomClimateZone
+            | FunctionName::GarageClimateZone
+            | FunctionName::CompartmentLight
+            | FunctionName::TrunkLight
             | FunctionName::LeftStabilizer
             | FunctionName::RightStabilizer
             | FunctionName::Stabilizer
             | FunctionName::Solar
             | FunctionName::SolarPower
-            | FunctionName::Battery
-            | FunctionName::MainBattery
-            | FunctionName::AuxBattery
             | FunctionName::ShorePower
             | FunctionName::AcPower
             | FunctionName::AcMains
@@ -726,24 +740,10 @@ impl FunctionName {
             | FunctionName::TempStorageArea
             | FunctionName::TempDriversArea
             | FunctionName::TempBunks
-            | FunctionName::LpTankRv
-            | FunctionName::LpTankHome
-            | FunctionName::LpTankCabin
-            | FunctionName::LpTankBbq
-            | FunctionName::LpTankGrill
-            | FunctionName::LpTankSubmarine
-            | FunctionName::LpTankOther
             | FunctionName::AntiLockBrakingSystem
             | FunctionName::LocapGateway
             | FunctionName::Bootloader
-            | FunctionName::AuxiliaryBattery
-            | FunctionName::ChassisBattery
-            | FunctionName::HouseBattery
-            | FunctionName::KitchenBattery
             | FunctionName::ElectronicSwayControl
-            | FunctionName::JacksLights
-            | FunctionName::InteriorStepLight
-            | FunctionName::ExteriorStepLight
             | FunctionName::AwningSensor
             | FunctionName::WifiBooster => DeviceEntityType::None,
         }

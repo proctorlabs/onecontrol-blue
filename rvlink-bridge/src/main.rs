@@ -21,8 +21,8 @@ mod mqtt;
 mod rvlink;
 
 use args::*;
-use rvlink_common::error::*;
 use flexi_logger::{AdaptiveFormat, Logger};
+use rvlink_common::error::*;
 use std::str::FromStr;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]

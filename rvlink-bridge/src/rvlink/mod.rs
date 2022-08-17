@@ -112,19 +112,12 @@ impl RVLink {
             match response {
                 GetDevicesMetadataResponse::Success(data) => {
                     for device in data.devices {
-                        let (is_new, device_entry) =
+                        let (_, device_entry) =
                             self.get_device_defaulted(device_table_id, next_device_id);
                         device_entry
                             .entity
                             .update_from_device_metadata(device, device_table_id, next_device_id)
                             .await;
-                        if is_new {
-                            self.get_mqtt()
-                                .await
-                                .publish_device_info(&device_entry.entity)
-                                .await
-                                .unwrap_or_default();
-                        }
                         next_device_id += 1;
                     }
                 }
@@ -152,19 +145,12 @@ impl RVLink {
             match response {
                 GetDevicesResponse::Success(data) => {
                     for device in data.devices {
-                        let (is_new, device_entry) =
+                        let (_, device_entry) =
                             self.get_device_defaulted(device_table_id, next_device_id);
                         device_entry
                             .entity
                             .update_from_device_info(device, device_table_id, next_device_id)
                             .await;
-                        if is_new {
-                            self.get_mqtt()
-                                .await
-                                .publish_device_info(&device_entry.entity)
-                                .await
-                                .unwrap_or_default();
-                        }
                         next_device_id += 1;
                     }
                 }
@@ -219,7 +205,21 @@ impl RVLink {
         let mut t = interval(Duration::from_secs(30));
         loop {
             t.tick().await;
-            warn!("Current state: {:?}", self.device_tables);
+            let res: Result<()> = async {
+                let devices = self.get_devices().await?;
+                for device in devices {
+                    self.get_mqtt()
+                        .await
+                        .publish_device_info(&device.entity)
+                        .await?;
+                }
+                Ok(())
+            }
+            .await;
+            match res {
+                Ok(_) => debug!("Timer cycle completed"),
+                Err(e) => warn!("Error while running timer task! {:?}", e),
+            };
         }
     }
 
