@@ -1,20 +1,18 @@
-mod hass;
-
-pub use hass::*;
 use hmac::{Hmac, Mac};
+use rvlink_common::devices::DeviceEntityType;
+use rvlink_common::hass::*;
+use rvlink_proto::{Device, DeviceMetadata, DeviceMetadataFull, DeviceType, FunctionName};
 use sha2::Sha256;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
-
-use crate::messages::{Device, DeviceMetadata, DeviceMetadataFull, DeviceType, FunctionName};
 
 type HmacSha256 = Hmac<Sha256>;
 
 lazy_static! {
     static ref MACHINEID: String = {
         let machine_uid: String = machine_uid::get().unwrap_or_else(|_| "UNKNOWN".into());
-        let mut mac = HmacSha256::new_from_slice(b"rvlink-bridge")
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(b"rvlink-bridge").expect("HMAC can take key of any size");
         mac.update(machine_uid.as_bytes());
         let result = mac.finalize();
         let mac_bytes = result.into_bytes();
@@ -50,30 +48,6 @@ pub enum DeviceEntitySource {
         device_table: u8,
         device_id: u8,
     },
-}
-
-#[derive(Debug, Default, PartialEq)]
-#[allow(dead_code)]
-pub enum DeviceEntityType {
-    #[default]
-    None,
-    Switch,
-    LightSwitch,
-    WaterHeater,
-    WaterPump,
-    Slide,
-    Awning,
-    Battery,
-    FreshTank,
-    GreyTank,
-    BlackTank,
-    FuelTank,
-    LPTank,
-    DoorLock,
-    Thermostat,
-    Brakes,
-    SignalLights,
-    Sensor,
 }
 
 #[allow(dead_code)]

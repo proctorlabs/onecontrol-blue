@@ -1,4 +1,4 @@
-use crate::devices::DeviceEntityType;
+use rvlink_common::devices::DeviceEntityType;
 
 use super::*;
 

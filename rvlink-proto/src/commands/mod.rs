@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::*;
+use rvlink_common::error::*;
 
 pub trait CommandTrait: Sized {
     type ResponseType: CommandResponseTrait;

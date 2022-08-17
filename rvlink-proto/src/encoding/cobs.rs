@@ -1,5 +1,5 @@
 use super::CRC8;
-use crate::error::*;
+use rvlink_common::error::*;
 
 #[allow(dead_code)]
 pub struct COBS;

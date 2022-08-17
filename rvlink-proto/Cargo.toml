@@ -1,0 +1,12 @@
+[package]
+name = "rvlink-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rvlink-common = { path = "../rvlink-common" }
+
+anyhow = { version = "1.0" }
+derive_more = { version = "0.99" }
+fixed = "1.17"
+num_enum = "0.5"

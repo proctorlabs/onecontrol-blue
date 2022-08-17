@@ -17,14 +17,11 @@ mod app;
 mod args;
 mod bluetooth;
 mod devices;
-mod encoding;
-mod error;
-mod messages;
 mod mqtt;
 mod onecontrol;
 
 use args::*;
-use error::*;
+use rvlink_common::error::*;
 use flexi_logger::{AdaptiveFormat, Logger};
 use std::str::FromStr;
 

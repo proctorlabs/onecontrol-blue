@@ -1,7 +1,7 @@
-use crate::error::*;
-use crate::messages::*;
+use crate::*;
 use fixed::{types::extra::U8, FixedU16};
 use num_enum::IntoPrimitive;
+use rvlink_common::error::*;
 
 pub trait EventTrait: Sized {
     fn min_length(&self) -> usize;

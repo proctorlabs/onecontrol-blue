@@ -1,11 +1,11 @@
 use crate::bluetooth::BluetoothManager;
 use crate::devices::DeviceEntity;
-use crate::messages::{events, *};
 use crate::mqtt::MqttManager;
-use crate::*;
 use dashmap::DashMap;
 use fixed::{types::extra::U8, FixedU16};
 use rand::Rng;
+use rvlink_common::*;
+use rvlink_proto::{events, *};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};

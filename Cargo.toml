@@ -1,2 +1,2 @@
 [workspace]
-members = ["rvlink-bridge"]
+members = ["rvlink-common", "rvlink-proto", "rvlink-bridge"]

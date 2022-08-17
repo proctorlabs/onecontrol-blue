@@ -1,8 +1,9 @@
 use crate::args::Args;
 use crate::devices::DeviceEntity;
-use crate::{error::*, onecontrol::Onecontrol};
+use crate::onecontrol::Onecontrol;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet};
 use rumqttc::{LastWill, QoS};
+use rvlink_common::error::*;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tokio::task;
@@ -86,11 +87,8 @@ impl MqttManager {
 
     async fn run_loop(self) {
         info!("MQTT handler task is starting...");
-        let mut mqttoptions = MqttOptions::new(
-            "rvlink-bridge",
-            self.args.host.clone(),
-            self.args.port,
-        );
+        let mut mqttoptions =
+            MqttOptions::new("rvlink-bridge", self.args.host.clone(), self.args.port);
         if self.args.username.is_some() && self.args.password.is_some() {
             mqttoptions.set_credentials(
                 self.args.username.clone().unwrap(),

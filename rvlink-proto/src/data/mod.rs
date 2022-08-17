@@ -1,6 +1,6 @@
 use super::Encodable;
-use crate::error::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use rvlink_common::error::*;
 
 // pub use dtc_id::*;
 pub use device::*;
@@ -24,7 +24,7 @@ macro_rules! define_encodable_struct {
             $( pub $fieldname: $fieldtype, )*
         }
 
-        impl crate::messages::Encodable for $name {
+        impl crate::Encodable for $name {
             fn from_data(data: &[u8]) -> Result<Self> {
                 if data.len() < $struct_size {
                     return Err(AppError::InvalidPayload);

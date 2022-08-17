@@ -1,12 +1,16 @@
+#[macro_use]
+extern crate derive_more;
+
 pub mod commands;
 pub mod data;
+pub mod encoding;
 pub mod events;
 
-use crate::error::*;
 pub use commands::*;
 pub use data::*;
 pub use events::*;
 use fixed::{types::extra::U8, FixedU16};
+use rvlink_common::error::*;
 
 pub trait Encodable: Sized {
     fn from_data(data: &[u8]) -> Result<Self>;

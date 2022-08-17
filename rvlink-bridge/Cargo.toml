@@ -3,8 +3,12 @@ name = "rvlink-bridge"
 authors = ["rvlink-bridge developers"]
 version = "0.1.0"
 edition = "2021"
+workspace = "../"
 
 [dependencies]
+rvlink-proto = { path = "../rvlink-proto" }
+rvlink-common = { path = "../rvlink-common" }
+
 # Logging
 log = { version = "0.4" }
 flexi_logger = { version = "0.23", features = ["use_chrono_for_offset"] }

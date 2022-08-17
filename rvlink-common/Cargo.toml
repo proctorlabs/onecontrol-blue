@@ -1,0 +1,11 @@
+[package]
+name = "rvlink-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "1.0" }
+derive_more = { version = "0.99" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+serde_yaml = { version = "0.9" }

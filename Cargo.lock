@@ -1054,12 +1054,36 @@ dependencies = [
  "num_enum",
  "rand",
  "rumqttc",
+ "rvlink-common",
+ "rvlink-proto",
  "serde",
  "serde_json",
  "serde_yaml",
  "sha2",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "rvlink-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "derive_more",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "rvlink-proto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "derive_more",
+ "fixed",
+ "num_enum",
+ "rvlink-common",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
-use crate::encoding::COBS;
-use crate::error::*;
+use rvlink_proto::encoding::COBS;
+use rvlink_common::error::*;
 use bluer::gatt::remote::Characteristic;
 use bluer::{Adapter, AdapterEvent, Device, Uuid};
 use futures::{pin_mut, StreamExt};
