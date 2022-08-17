@@ -8,6 +8,9 @@ extern crate derive_more;
 extern crate hex_literal;
 
 #[macro_use]
+extern crate lazy_static;
+
+#[macro_use]
 mod macros;
 
 mod app;

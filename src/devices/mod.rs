@@ -1,10 +1,26 @@
 mod hass;
 
 pub use hass::*;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
 use crate::messages::{Device, DeviceMetadata, DeviceMetadataFull, DeviceType, FunctionName};
+
+type HmacSha256 = Hmac<Sha256>;
+
+lazy_static! {
+    static ref MACHINEID: String = {
+        let machine_uid: String = machine_uid::get().unwrap_or_else(|_| "UNKNOWN".into());
+        let mut mac = HmacSha256::new_from_slice(b"onecontrol-mqtt-bridge")
+            .expect("HMAC can take key of any size");
+        mac.update(machine_uid.as_bytes());
+        let result = mac.finalize();
+        let mac_bytes = result.into_bytes();
+        base64::encode(mac_bytes)
+    };
+}
 
 #[derive(Debug, Clone, Deref, Default)]
 pub struct DeviceEntity(Arc<RwLock<DeviceEntityInner>>);
@@ -70,7 +86,7 @@ impl DeviceEntity {
                 model: format!("{} {}", crate_name!(), crate_version!()).into(),
                 manufacturer: crate_authors!().to_string().into(),
                 sw_version: crate_version!().to_string().into(),
-                identifiers: zelf.uniq_id().into(),
+                identifiers: MACHINEID.to_string().into(),
                 ..Default::default()
             }),
             state_topic: zelf.stat_topic(&base_topic).into(),
@@ -145,6 +161,11 @@ impl DeviceEntity {
             }) => {
                 device.function_name = function_name;
                 device.function_instance = function_instance;
+                device.display_name = if function_instance > 0 {
+                    format!("{} {}", function_name, function_instance)
+                } else {
+                    function_name.to_string()
+                };
                 device.attributes.insert(
                     "device_capabilities".into(),
                     format!("{:#02x}", device_capabilities),
@@ -161,9 +182,18 @@ impl DeviceEntity {
                 );
             }
             DeviceMetadata::Basic { .. } | DeviceMetadata::None => {
+                device.display_name = "unknown".into();
                 device.source = DeviceEntitySource::None;
             }
         }
+    }
+
+    pub async fn config_topic(&self, config_base_topic: &str) -> String {
+        self.read().await.config_topic(config_base_topic)
+    }
+
+    pub async fn stat_topic(&self, base_topic: &str) -> String {
+        self.read().await.stat_topic(base_topic)
     }
 }
 
@@ -222,9 +252,15 @@ impl DeviceEntityInner {
         format!("{}{}/attr", base_topic, self.uniq_id())
     }
 
-    // pub fn config_topic(&self, config_base_topic: &str) -> String {
-    //     format!("{}sensor/name", config_base_topic)
-    // }
+    pub fn config_topic(&self, config_base_topic: &str) -> String {
+        match self.hass_device_type() {
+            _ => format!(
+                "{}sensor/{}/device/config",
+                config_base_topic,
+                self.uniq_id()
+            ),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, Default)]
@@ -362,6 +398,8 @@ impl HassDiscoveryType {
 
     pub fn device_class(&self) -> Option<String> {
         match self {
+            Self::Sensor(HassDiscoverySensorClass::None) => None,
+            Self::BinarySensor(HassDiscoveryBinarySensorClass::None) => None,
             Self::Sensor(c) => Some(c.to_string()),
             Self::BinarySensor(c) => Some(c.to_string()),
             _ => None,

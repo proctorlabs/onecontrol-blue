@@ -39,11 +39,19 @@ impl MqttManager {
 
     pub async fn publish_device_info(&self, device: &DeviceEntity) -> Result<()> {
         let discovery = device.to_discovery(self.base_topic().to_string()).await;
-        Ok(())
+        let config_topic = device.config_topic(&self.args.discovery_topic).await;
+        self.send(
+            &config_topic,
+            serde_json::to_vec(&discovery)?,
+            true,
+            QoS::AtLeastOnce,
+        )
+        .await
     }
 
     pub async fn publish_device_state(&self, device: &DeviceEntity, state: &str) -> Result<()> {
-        Ok(())
+        let state_topic = device.stat_topic(&self.args.base_topic).await;
+        self.send(&state_topic, state, true, QoS::AtLeastOnce).await
     }
 
     async fn send<T: Into<Vec<u8>>>(

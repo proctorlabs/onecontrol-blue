@@ -1,5 +1,6 @@
 [package]
 name = "onecontrol-mqtt-bridge"
+authors = ["onecontrol-mqtt-bridge team"]
 version = "0.1.0"
 edition = "2021"
 
@@ -18,6 +19,10 @@ hex-literal = "0.3"
 fixed = "1.17"
 dashmap = "5.3"
 rand = "0.8"
+hmac = "0.12"
+sha2 = "0.10"
+machine-uid = "0.2"
+base64 = "0.13"
 
 # CLI
 clap = { version = "3.2", features = ["derive", "env"] }
