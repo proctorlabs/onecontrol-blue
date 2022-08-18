@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 type HmacSha256 = Hmac<Sha256>;
 
 lazy_static! {
+    // Using HMAC to ensure the original machine ID cannot be easily derived
     static ref MACHINEID: String = {
         let machine_uid: String = machine_uid::get().unwrap_or_else(|_| "UNKNOWN".into());
         let mut mac =
@@ -16,7 +17,9 @@ lazy_static! {
         mac.update(machine_uid.as_bytes());
         let result = mac.finalize();
         let mac_bytes = result.into_bytes();
-        base64::encode(mac_bytes)
+        let encoded_str = base64::encode(mac_bytes);
+        // remove all possible symbols from base64
+        encoded_str.replace(&['/', '+', '='][..], "")
     };
 }
 
@@ -27,13 +30,14 @@ pub struct DeviceEntity(Arc<RwLock<DeviceEntityInner>>);
 #[allow(dead_code)]
 pub struct DeviceEntityInner {
     pub source: DeviceEntitySource,
-    pub display_name: String,
     pub typ: DeviceEntityType,
     pub device_instance: u8,
     pub function_instance: u8,
     pub device_type: DeviceType,
     pub function_name: FunctionName,
     pub attributes: HashMap<String, String>,
+    pub has_device_metadata: bool,
+    pub has_device_info: bool,
 }
 
 #[derive(Debug, Default)]
@@ -52,6 +56,17 @@ pub enum DeviceEntitySource {
 
 #[allow(dead_code)]
 impl DeviceEntity {
+    pub async fn new_system(name: String) -> Self {
+        let res: Self = Default::default();
+        {
+            let mut inner = res.write().await;
+            inner.source = DeviceEntitySource::System { name };
+            inner.has_device_metadata = true;
+            inner.has_device_info = true;
+        }
+        res
+    }
+
     pub async fn to_discovery(&self, base_topic: String) -> HassDiscoveryInfo {
         let zelf = self.read().await;
         HassDiscoveryInfo {
@@ -63,19 +78,29 @@ impl DeviceEntity {
                 identifiers: MACHINEID.to_string().into(),
                 ..Default::default()
             }),
-            state_topic: zelf.stat_topic(&base_topic).into(),
-            json_attributes_topic: zelf.attr_topic(&base_topic).into(),
-            availability_topic: zelf.avty_topic(&base_topic).into(),
+            state_topic: zelf.stat_topic("~").into(),
+            json_attributes_topic: zelf.attr_topic("~").into(),
+            availability_topic: zelf.avty_topic("~").into(),
+            command_topic: zelf.command_topic("~"),
+            base_topic: base_topic.into(),
+            payload_on: "on".to_string().into(),
+            payload_off: "off".to_string().into(),
+            payload_open: "open".to_string().into(),
+            payload_close: "close".to_string().into(),
+            payload_stop: "stop".to_string().into(),
             payload_available: "online".to_string().into(),
             payload_not_available: "offline".to_string().into(),
-            // unit_of_measurement: zelf.unit_of_measurement.clone(),
-            name: zelf.display_name.clone().into(),
+            name: zelf.display_name().into(),
             icon: zelf.hass_icon().to_string().into(),
             unique_id: zelf.uniq_id().into(),
-            base_topic: base_topic.into(),
             device_class: zelf.hass_device_class(),
             ..Default::default()
         }
+    }
+
+    pub async fn device_is_ready(&self) -> bool {
+        let device = self.read().await;
+        device.has_device_info && device.has_device_metadata
     }
 
     pub async fn update_from_device_info(
@@ -110,6 +135,7 @@ impl DeviceEntity {
                 device.source = DeviceEntitySource::None;
             }
         }
+        device.has_device_info = true;
     }
 
     pub async fn update_from_device_metadata(
@@ -135,11 +161,6 @@ impl DeviceEntity {
             }) => {
                 device.function_name = function_name;
                 device.function_instance = function_instance;
-                device.display_name = if function_instance > 0 {
-                    format!("{} {}", function_name, function_instance)
-                } else {
-                    function_name.to_string()
-                };
                 device.attributes.insert(
                     "device_capabilities".into(),
                     format!("{:#02x}", device_capabilities),
@@ -156,10 +177,10 @@ impl DeviceEntity {
                 );
             }
             DeviceMetadata::Basic { .. } | DeviceMetadata::None => {
-                device.display_name = "unknown".into();
                 device.source = DeviceEntitySource::None;
             }
         }
+        device.has_device_metadata = true;
     }
 
     pub async fn config_topic(&self, config_base_topic: &str) -> String {
@@ -180,15 +201,33 @@ impl DeviceEntityInner {
         self.hass_device_type().icon()
     }
 
+    pub fn display_name(&self) -> String {
+        match &self.source {
+            DeviceEntitySource::None => "rvlink-bridge".into(),
+            DeviceEntitySource::System { name } => name.clone(),
+            DeviceEntitySource::CAN { .. } => {
+                if self.function_name != FunctionName::Unknown {
+                    if self.function_instance > 0 {
+                        format!("{} {}", self.function_name, self.function_instance)
+                    } else {
+                        self.function_name.to_string()
+                    }
+                } else {
+                    self.device_type.to_string()
+                }
+            }
+        }
+    }
+
     pub fn hass_device_type(&self) -> HassDiscoveryType {
         match self.function_name.device_entity_type() {
             DeviceEntityType::LightSwitch => HassDiscoveryType::Light,
             DeviceEntityType::WaterHeater
             | DeviceEntityType::WaterPump
-            | DeviceEntityType::Slide
             | DeviceEntityType::DoorLock
-            | DeviceEntityType::Switch
-            | DeviceEntityType::Awning => HassDiscoveryType::Switch,
+            | DeviceEntityType::Switch => HassDiscoveryType::Switch,
+            DeviceEntityType::Awning => HassDiscoveryType::Cover(HassDiscoveryCoverClass::Awning),
+            DeviceEntityType::Slide => HassDiscoveryType::Cover(HassDiscoveryCoverClass::Door),
             DeviceEntityType::Battery
             | DeviceEntityType::FreshTank
             | DeviceEntityType::GreyTank
@@ -205,12 +244,18 @@ impl DeviceEntityInner {
 
     pub fn uniq_id(&self) -> String {
         match &self.source {
-            DeviceEntitySource::None => "unknown".into(),
-            DeviceEntitySource::System { name } => name.clone(),
+            DeviceEntitySource::None => "rvlink-bridge".into(),
+            DeviceEntitySource::System { name } => name.clone().replace(' ', "_").to_lowercase(),
             DeviceEntitySource::CAN {
                 device_table,
                 device_id,
-            } => format!("CAN-{}-{}", device_table, device_id),
+            } => format!(
+                "{}-{}-can-{}-{}",
+                *MACHINEID,
+                self.function_name.device_entity_type(),
+                device_table,
+                device_id
+            ),
         }
     }
 
@@ -226,13 +271,25 @@ impl DeviceEntityInner {
         format!("{}{}/attr", base_topic, self.uniq_id())
     }
 
-    pub fn config_topic(&self, config_base_topic: &str) -> String {
+    pub fn command_topic(&self, base_topic: &str) -> Option<String> {
         match self.hass_device_type() {
-            _ => format!(
-                "{}sensor/{}/device/config",
-                config_base_topic,
-                self.uniq_id()
-            ),
+            HassDiscoveryType::Sensor(_) | HassDiscoveryType::BinarySensor(_) => None,
+            HassDiscoveryType::Cover(_)
+            | HassDiscoveryType::MediaPlayer
+            | HassDiscoveryType::Switch
+            | HassDiscoveryType::Light
+            | HassDiscoveryType::Thermostat => {
+                Some(format!("{}{}/cmd", base_topic, self.uniq_id()))
+            }
         }
+    }
+
+    pub fn config_topic(&self, config_base_topic: &str) -> String {
+        format!(
+            "{}{}/rvlink-bridge/{}/config",
+            config_base_topic,
+            self.hass_device_type(),
+            self.uniq_id()
+        )
     }
 }

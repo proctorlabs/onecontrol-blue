@@ -8,18 +8,19 @@ use rvlink_common::*;
 use rvlink_proto::{events, *};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::{interval, sleep, Duration};
 
 #[derive(Debug, Deref, Clone)]
 pub struct RVLink(Arc<RVLinkInner>);
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum DeviceState {
     #[default]
     Unknown,
     Switch(OnOff),
     Percentage(u8),
+    Voltage(FixedU16<U8>),
 }
 
 impl DeviceState {
@@ -28,6 +29,7 @@ impl DeviceState {
             DeviceState::Unknown => "unknown".into(),
             DeviceState::Switch(onoff) => onoff.to_string(),
             DeviceState::Percentage(pc) => format!("{}%", pc),
+            DeviceState::Voltage(v) => format!("{}V", v),
         }
     }
 }
@@ -53,8 +55,8 @@ pub struct RVLinkInner {
     msgnum: AtomicU16,
     cmdmap: DashMap<u16, mpsc::UnboundedSender<CommandResponse>>,
     device_tables: DashMap<u8, Arc<DeviceTable>>,
-    battery_voltage: RwLock<Option<FixedU16<U8>>>,
-    external_temperature: RwLock<Option<FixedU16<U8>>>,
+    battery: Arc<DeviceEntry>,
+    command_lock: Mutex<()>,
 }
 
 #[allow(dead_code)]
@@ -68,9 +70,12 @@ impl RVLink {
             msgnum,
             cmdmap: Default::default(),
             device_tables: Default::default(),
-            battery_voltage: Default::default(),
-            external_temperature: Default::default(),
             mqtt: Default::default(),
+            command_lock: Default::default(),
+            battery: Arc::new(DeviceEntry {
+                entity: DeviceEntity::new_system("Battery".into()).await,
+                state: Default::default(),
+            }),
         })))
     }
 
@@ -91,6 +96,9 @@ impl RVLink {
 
     pub async fn get_devices(&self) -> Result<Vec<Arc<DeviceEntry>>> {
         let mut result = vec![];
+        if self.has_battery().await {
+            result.push(self.battery.clone())
+        }
         for table in self.device_tables.iter() {
             for device in table.devices.iter() {
                 result.push(device.clone());
@@ -105,29 +113,53 @@ impl RVLink {
         cmd.device_table_id = device_table_id;
         cmd.start_device_id = 0;
         cmd.max_device_request_count = 255;
-        let responses = self.send(cmd).await?;
-        let device_table = self.get_device_table_defaulted(device_table_id);
-        let mut next_device_id = 0;
-        for response in responses {
-            match response {
-                GetDevicesMetadataResponse::Success(data) => {
-                    for device in data.devices {
-                        let (_, device_entry) =
-                            self.get_device_defaulted(device_table_id, next_device_id);
-                        device_entry
-                            .entity
-                            .update_from_device_metadata(device, device_table_id, next_device_id)
-                            .await;
-                        next_device_id += 1;
+        let mut devices = vec![];
+        let mut device_count = 255;
+        let mut device_crc = 0;
+
+        while device_count as usize != devices.len() {
+            if devices.len() > 0 {
+                warn!("Received an invalid metadata response! Ignoring and retrying...");
+                let stutter = rand::thread_rng().gen_range(800..1500);
+                sleep(Duration::from_millis(stutter)).await;
+                devices.clear();
+            };
+            let responses = self.send(cmd.clone()).await?;
+            for response in responses {
+                match response {
+                    GetDevicesMetadataResponse::Success(data) => {
+                        for device in data.devices.into_iter() {
+                            devices.push(device);
+                        }
+                    }
+                    GetDevicesMetadataResponse::SuccessComplete(data) => {
+                        device_count = data.device_count;
+                        device_crc = data.device_metadata_table_crc;
+                    }
+                    GetDevicesMetadataResponse::Failure(_)
+                    | GetDevicesMetadataResponse::FailureComplete(_) => {
+                        warn!("Failure while trying to retrieve device metadata!");
+                        device_count = 255;
+                        devices.clear();
+                        let stutter = rand::thread_rng().gen_range(800..1500);
+                        sleep(Duration::from_millis(stutter)).await;
                     }
                 }
-                GetDevicesMetadataResponse::SuccessComplete(data) => {
-                    *device_table.metadata_crc.write().await = data.device_metadata_table_crc;
-                    *device_table.device_count.write().await = data.device_count;
-                }
-                _ => {}
             }
         }
+
+        let device_table = self.get_device_table_defaulted(device_table_id);
+        for (i, device) in devices.into_iter().enumerate() {
+            debug!("Found device metadata: {:?}", device);
+            let (_, device_entry) = self.get_device_defaulted(device_table_id, i as u8);
+            device_entry
+                .entity
+                .update_from_device_metadata(device, device_table_id, i as u8)
+                .await;
+        }
+
+        *device_table.metadata_crc.write().await = device_crc;
+        *device_table.device_count.write().await = device_count;
         warn!("Device metadata synchronized!");
         Ok(())
     }
@@ -138,29 +170,53 @@ impl RVLink {
         cmd.device_table_id = device_table_id;
         cmd.start_device_id = 0;
         cmd.max_device_request_count = 255;
-        let responses = self.send(cmd).await?;
-        let device_table = self.get_device_table_defaulted(device_table_id);
-        let mut next_device_id = 0;
-        for response in responses {
-            match response {
-                GetDevicesResponse::Success(data) => {
-                    for device in data.devices {
-                        let (_, device_entry) =
-                            self.get_device_defaulted(device_table_id, next_device_id);
-                        device_entry
-                            .entity
-                            .update_from_device_info(device, device_table_id, next_device_id)
-                            .await;
-                        next_device_id += 1;
+        let mut devices = vec![];
+        let mut device_count = 255;
+        let mut device_crc = 0;
+
+        while device_count as usize != devices.len() {
+            if devices.len() > 0 {
+                warn!("Received an invalid device response! Ignoring and retrying...");
+                let stutter = rand::thread_rng().gen_range(800..1500);
+                sleep(Duration::from_millis(stutter)).await;
+                devices.clear();
+            };
+            let responses = self.send(cmd.clone()).await?;
+            for response in responses {
+                match response {
+                    GetDevicesResponse::Success(data) => {
+                        for device in data.devices.into_iter() {
+                            devices.push(device);
+                        }
+                    }
+                    GetDevicesResponse::SuccessComplete(data) => {
+                        device_count = data.device_count;
+                        device_crc = data.device_table_crc;
+                    }
+                    GetDevicesResponse::Failure(_) | GetDevicesResponse::FailureComplete(_) => {
+                        warn!("Failure while trying to retrieve devices!");
+                        device_count = 255;
+                        devices.clear();
+                        let stutter = rand::thread_rng().gen_range(800..1500);
+                        sleep(Duration::from_millis(stutter)).await;
                     }
                 }
-                GetDevicesResponse::SuccessComplete(data) => {
-                    *device_table.crc.write().await = data.device_table_crc;
-                }
-                _ => {}
             }
         }
-        warn!("Device data synchronized!");
+
+        let device_table = self.get_device_table_defaulted(device_table_id);
+        for (i, device) in devices.into_iter().enumerate() {
+            debug!("Found device: {:?}", device);
+            let (_, device_entry) = self.get_device_defaulted(device_table_id, i as u8);
+            device_entry
+                .entity
+                .update_from_device_info(device, device_table_id, i as u8)
+                .await;
+        }
+
+        *device_table.crc.write().await = device_crc;
+        *device_table.device_count.write().await = device_count;
+        warn!("Device info synchronized!");
         Ok(())
     }
 
@@ -208,10 +264,17 @@ impl RVLink {
             let res: Result<()> = async {
                 let devices = self.get_devices().await?;
                 for device in devices {
-                    self.get_mqtt()
-                        .await
-                        .publish_device_info(&device.entity)
-                        .await?;
+                    if device.entity.device_is_ready().await {
+                        self.get_mqtt()
+                            .await
+                            .publish_device_info(&device.entity)
+                            .await?;
+                    } else {
+                        warn!(
+                            "Skipped publishing info for {:?} -- device is not ready",
+                            device.entity
+                        );
+                    }
                 }
                 Ok(())
             }
@@ -303,29 +366,26 @@ impl RVLink {
 
     async fn handle_rvstatus(&self, status: RvStatus) {
         let bv = status.battery_voltage();
-        let et = status.external_temperature();
         if bv.is_some() {
-            *self.battery_voltage.write().await = bv;
-        }
-        if et.is_some() {
-            *self.external_temperature.write().await = et;
+            let newstate = DeviceState::Voltage(bv.unwrap());
+            *self.battery.state.write().await = newstate.clone();
+            self.get_mqtt()
+                .await
+                .publish_device_state(&self.battery.entity, &newstate.state_string())
+                .await
+                .unwrap_or_default();
         }
     }
 
     pub async fn has_battery(&self) -> bool {
-        self.battery_voltage.read().await.is_some()
+        *self.battery.state.read().await != DeviceState::Unknown
     }
 
     pub async fn get_battery_voltage(&self) -> FixedU16<U8> {
-        (*self.battery_voltage.read().await).unwrap_or_default()
-    }
-
-    pub async fn has_external_temperature(&self) -> bool {
-        self.external_temperature.read().await.is_some()
-    }
-
-    pub async fn get_external_temperature(&self) -> FixedU16<U8> {
-        (*self.external_temperature.read().await).unwrap_or_default()
+        match *self.battery.state.read().await {
+            DeviceState::Voltage(v) => v,
+            _ => Default::default(),
+        }
     }
 
     /// Send a command to the rvlink device
@@ -334,7 +394,9 @@ impl RVLink {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         self.cmdmap.insert(msgnum, sender);
         // We wrap most of this in async move {} here to act similar to a finally{} block while still giving us ? operator usage
+        let _lock = self.command_lock.lock().await;
         let rsp = async move {
+            debug!("Sending command# {}", msgnum);
             cmd.set_command_id(msgnum);
             self.bluetooth.send(cmd.to_payload()?).await?;
             let mut rsp: Vec<<T as CommandTrait>::ResponseType> = vec![];

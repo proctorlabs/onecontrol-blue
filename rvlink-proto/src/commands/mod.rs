@@ -155,7 +155,7 @@ macro_rules! commands {
         }
 
         $(
-            #[derive(Debug, Default)]
+            #[derive(Debug, Default, Clone)]
             pub struct $msgname {
                 pub client_command_id: u16,
                 $( pub $name: $type, )*

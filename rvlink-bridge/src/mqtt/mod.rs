@@ -1,4 +1,4 @@
-use crate::args::Args;
+use crate::config;
 use crate::devices::DeviceEntity;
 use crate::rvlink::RVLink;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet};
@@ -16,16 +16,26 @@ pub struct MqttManager(Arc<MqttManagerInner>);
 #[allow(dead_code)]
 pub struct MqttManagerInner {
     rvlink: RVLink,
-    args: Args,
     client: RwLock<Option<AsyncClient>>,
+    discovery_topic: String,
+    base_topic: String,
+    username: Option<String>,
+    password: Option<String>,
+    host: String,
+    port: u16,
 }
 
 impl MqttManager {
-    pub async fn new(rvlink: RVLink, args: Args) -> Result<Self> {
+    pub async fn new(rvlink: RVLink) -> Result<Self> {
         Ok(MqttManager(Arc::new(MqttManagerInner {
             rvlink,
-            args,
             client: Default::default(),
+            discovery_topic: config::DISCOVERY_TOPIC.clone(),
+            base_topic: config::BASE_TOPIC.clone(),
+            username: config::USERNAME.clone(),
+            password: config::PASSWORD.clone(),
+            host: config::HOST.clone(),
+            port: *config::PORT,
         })))
     }
 
@@ -34,13 +44,9 @@ impl MqttManager {
         Ok(())
     }
 
-    fn base_topic(&self) -> &str {
-        &self.args.base_topic
-    }
-
     pub async fn publish_device_info(&self, device: &DeviceEntity) -> Result<()> {
-        let discovery = device.to_discovery(self.base_topic().to_string()).await;
-        let config_topic = device.config_topic(&self.args.discovery_topic).await;
+        let discovery = device.to_discovery(self.base_topic.to_string()).await;
+        let config_topic = device.config_topic(&self.discovery_topic).await;
         self.send(
             &config_topic,
             serde_json::to_vec(&discovery)?,
@@ -51,7 +57,7 @@ impl MqttManager {
     }
 
     pub async fn publish_device_state(&self, device: &DeviceEntity, state: &str) -> Result<()> {
-        let state_topic = device.stat_topic(&self.args.base_topic).await;
+        let state_topic = device.stat_topic(&self.base_topic).await;
         self.send(&state_topic, state, true, QoS::AtLeastOnce).await
     }
 
@@ -63,6 +69,7 @@ impl MqttManager {
         qos: QoS,
     ) -> Result<()> {
         let client = self.client.read().await;
+        debug!("Sending message to topic {}", topic);
         if let Some(client) = &*client {
             client.publish(topic, qos, retain, msg).await?;
             Ok(())
@@ -87,17 +94,16 @@ impl MqttManager {
 
     async fn run_loop(self) {
         info!("MQTT handler task is starting...");
-        let mut mqttoptions =
-            MqttOptions::new("rvlink-bridge", self.args.host.clone(), self.args.port);
-        if self.args.username.is_some() && self.args.password.is_some() {
+        let mut mqttoptions = MqttOptions::new("rvlink-bridge", self.host.clone(), self.port);
+        if self.username.is_some() && self.password.is_some() {
             mqttoptions.set_credentials(
-                self.args.username.clone().unwrap(),
-                self.args.password.clone().unwrap(),
+                self.username.clone().unwrap(),
+                self.password.clone().unwrap(),
             );
         }
         mqttoptions.set_keep_alive(Duration::from_secs(5));
         mqttoptions.set_last_will(LastWill::new(
-            format!("{}status", self.args.base_topic),
+            format!("{}avty", self.base_topic),
             "offline",
             QoS::AtLeastOnce,
             true,
@@ -108,10 +114,9 @@ impl MqttManager {
             let res: Result<()> = async {
                 match eventloop.poll().await {
                     Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                        self.subscribe(&format!("{}#", self.args.base_topic))
-                            .await?;
+                        self.subscribe(&format!("{}#", self.base_topic)).await?;
                         self.send(
-                            &format!("{}status", self.args.base_topic),
+                            &format!("{}avty", self.base_topic),
                             "online",
                             true,
                             QoS::AtLeastOnce,

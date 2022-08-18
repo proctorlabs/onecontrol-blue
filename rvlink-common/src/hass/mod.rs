@@ -18,6 +18,8 @@ pub enum HassDiscoveryType {
     Light,
     #[display(fmt = "thermostat")]
     Thermostat,
+    #[display(fmt = "cover")]
+    Cover(HassDiscoveryCoverClass),
 }
 
 #[derive(Clone, Debug, Display, Default)]
@@ -108,6 +110,33 @@ pub enum HassDiscoveryBinarySensorClass {
     Window, // on means open, off means closed
 }
 
+#[derive(Clone, Debug, Display, Default)]
+pub enum HassDiscoveryCoverClass {
+    #[display(fmt = "none")]
+    #[default]
+    None,
+    #[display(fmt = "awning")]
+    Awning,
+    #[display(fmt = "blind")]
+    Blind,
+    #[display(fmt = "curtain")]
+    Curtain,
+    #[display(fmt = "damper")]
+    Damper,
+    #[display(fmt = "door")]
+    Door,
+    #[display(fmt = "garage")]
+    Garage,
+    #[display(fmt = "gate")]
+    Gate,
+    #[display(fmt = "shade")]
+    Shade,
+    #[display(fmt = "shutter")]
+    Shutter,
+    #[display(fmt = "window")]
+    Window,
+}
+
 pub struct HassIcons;
 
 impl HassIcons {
@@ -132,6 +161,7 @@ impl HassDiscoveryType {
             Self::MediaPlayer => HassIcons::TELEVISION,
             Self::Sensor(c) => c.icon(),
             Self::BinarySensor(c) => c.icon(),
+            Self::Cover(c) => c.icon(),
         }
     }
 
@@ -139,9 +169,29 @@ impl HassDiscoveryType {
         match self {
             Self::Sensor(HassDiscoverySensorClass::None) => None,
             Self::BinarySensor(HassDiscoveryBinarySensorClass::None) => None,
+            Self::Cover(HassDiscoveryCoverClass::None) => None,
             Self::Sensor(c) => Some(c.to_string()),
             Self::BinarySensor(c) => Some(c.to_string()),
+            Self::Cover(c) => Some(c.to_string()),
             _ => None,
+        }
+    }
+}
+
+impl HassDiscoveryCoverClass {
+    pub fn icon(&self) -> &'static str {
+        match self {
+            HassDiscoveryCoverClass::None => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Awning => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Blind => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Curtain => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Damper => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Door => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Garage => HassIcons::GARAGE,
+            HassDiscoveryCoverClass::Gate => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Shade => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Shutter => HassIcons::SQUARE,
+            HassDiscoveryCoverClass::Window => HassIcons::SQUARE,
         }
     }
 }

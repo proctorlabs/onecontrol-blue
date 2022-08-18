@@ -529,6 +529,8 @@ impl FunctionName {
             | FunctionName::InteriorLight
             | FunctionName::RampDoorLight
             | FunctionName::EntertainmentLight
+            | FunctionName::FrontLockerLight
+            | FunctionName::RearLockerLight
             | FunctionName::RearEntryDoorLight
             | FunctionName::CeilingFanLight
             | FunctionName::ExteriorLight
@@ -537,6 +539,14 @@ impl FunctionName {
             | FunctionName::JacksLights
             | FunctionName::InteriorStepLight
             | FunctionName::ExteriorStepLight
+            | FunctionName::MensLight
+            | FunctionName::WomensLight
+            | FunctionName::ServiceLight
+            | FunctionName::CompartmentLight
+            | FunctionName::TrunkLight
+            | FunctionName::OdsFloodLight
+            | FunctionName::UnderbodyAccentLight
+            | FunctionName::SpeakerLight
             | FunctionName::DsSecurityLight
             | FunctionName::OdsSecurityLight
             | FunctionName::OverheadFanLight
@@ -585,6 +595,8 @@ impl FunctionName {
             | FunctionName::ExteriorTv
             | FunctionName::FrontBathroomTv
             | FunctionName::FrontBedroomTv
+            | FunctionName::RearBathroomTv
+            | FunctionName::RearBedroomTv
             | FunctionName::CdPlayer
             | FunctionName::Tuner
             | FunctionName::Radio
@@ -592,9 +604,16 @@ impl FunctionName {
             | FunctionName::Game
             | FunctionName::ClockRadio
             | FunctionName::Aux => DeviceEntityType::Switch,
-            FunctionName::RearBathroomTv
-            | FunctionName::RearBedroomTv
-            | FunctionName::BathroomDoorLock
+            FunctionName::GasWaterHeater
+            | FunctionName::ElectricWaterHeater
+            | FunctionName::WaterTankHeater
+            | FunctionName::FreshTankHeater
+            | FunctionName::GreyTankHeater
+            | FunctionName::BlackTankHeater
+            | FunctionName::WaterHeater
+            | FunctionName::WaterHeaters => DeviceEntityType::WaterHeater,
+            FunctionName::WaterPump => DeviceEntityType::WaterPump,
+            FunctionName::BathroomDoorLock
             | FunctionName::BedroomDoorLock
             | FunctionName::FrontDoorLock
             | FunctionName::GarageDoorLock
@@ -603,6 +622,7 @@ impl FunctionName {
             | FunctionName::RearDoorLock => DeviceEntityType::DoorLock,
             FunctionName::PatioAwning
             | FunctionName::RearAwning
+            | FunctionName::GarageAwning
             | FunctionName::SideAwning
             | FunctionName::Awning => DeviceEntityType::Awning,
             FunctionName::Battery
@@ -615,9 +635,6 @@ impl FunctionName {
             FunctionName::Unknown
             | FunctionName::DiagnosticTool
             | FunctionName::MyrvTablet
-            | FunctionName::GasWaterHeater
-            | FunctionName::ElectricWaterHeater
-            | FunctionName::WaterPump
             | FunctionName::BathVent
             | FunctionName::LandingGear
             | FunctionName::FrontStabilizer
@@ -628,7 +645,6 @@ impl FunctionName {
             | FunctionName::DoorLock
             | FunctionName::Generator
             | FunctionName::LevelUpLeveler
-            | FunctionName::WaterTankHeater
             | FunctionName::MyrvTouchscreen
             | FunctionName::Leveler
             | FunctionName::VentCover
@@ -647,9 +663,6 @@ impl FunctionName {
             | FunctionName::ClimateZone
             | FunctionName::Fireplace
             | FunctionName::Thermostat
-            | FunctionName::FreshTankHeater
-            | FunctionName::GreyTankHeater
-            | FunctionName::BlackTankHeater
             | FunctionName::LpTank
             | FunctionName::NetworkBridge
             | FunctionName::EthernetBridge
@@ -663,8 +676,6 @@ impl FunctionName {
             | FunctionName::MainClimateZone
             | FunctionName::BedroomClimateZone
             | FunctionName::GarageClimateZone
-            | FunctionName::CompartmentLight
-            | FunctionName::TrunkLight
             | FunctionName::LeftStabilizer
             | FunctionName::RightStabilizer
             | FunctionName::Stabilizer
@@ -691,14 +702,6 @@ impl FunctionName {
             | FunctionName::BedTilt
             | FunctionName::FrontBedTilt
             | FunctionName::RearBedTilt
-            | FunctionName::MensLight
-            | FunctionName::WomensLight
-            | FunctionName::ServiceLight
-            | FunctionName::OdsFloodLight
-            | FunctionName::UnderbodyAccentLight
-            | FunctionName::SpeakerLight
-            | FunctionName::WaterHeater
-            | FunctionName::WaterHeaters
             | FunctionName::Aquafi
             | FunctionName::ConnectAnywhere
             | FunctionName::SlideIfEquip
@@ -707,14 +710,11 @@ impl FunctionName {
             | FunctionName::InteriorLightIfEquip
             | FunctionName::WasteValve
             | FunctionName::TireLinc
-            | FunctionName::FrontLockerLight
-            | FunctionName::RearLockerLight
             | FunctionName::RearAuxPower
             | FunctionName::BathroomSlide
             | FunctionName::RoofLift
             | FunctionName::YetiPackage
             | FunctionName::PropaneLocker
-            | FunctionName::GarageAwning
             | FunctionName::MonitorPanel
             | FunctionName::Camera
             | FunctionName::JaycoAusTbbGw

@@ -1,3 +1,4 @@
+use crate::config;
 use crate::{bluetooth::BluetoothManager, mqtt::MqttManager, rvlink::RVLink, *};
 use std::sync::Arc;
 
@@ -12,10 +13,10 @@ pub struct AppInner {
 }
 
 impl App {
-    pub async fn new(args: Args) -> Result<Self> {
-        let bluetooth = BluetoothManager::new(args.device.clone()).await?;
+    pub async fn new() -> Result<Self> {
+        let bluetooth = BluetoothManager::new(config::DEVICE.clone()).await?;
         let rvlink = RVLink::new(bluetooth.clone()).await?;
-        let mqtt = MqttManager::new(rvlink.clone(), args).await?;
+        let mqtt = MqttManager::new(rvlink.clone()).await?;
         rvlink.set_mqtt_manager(mqtt.clone()).await;
         Ok(Self(Arc::new(AppInner {
             bluetooth,
