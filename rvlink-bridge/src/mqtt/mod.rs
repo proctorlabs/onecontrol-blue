@@ -46,7 +46,7 @@ impl MqttManager {
 
     pub async fn publish_device_info(&self, device: &DeviceEntity) -> Result<()> {
         let discovery = device.to_discovery(self.base_topic.to_string()).await;
-        let config_topic = device.config_topic(&self.discovery_topic).await;
+        let config_topic = device.config_topic(&self.discovery_topic);
         self.send(
             &config_topic,
             serde_json::to_vec(&discovery)?,
@@ -57,7 +57,7 @@ impl MqttManager {
     }
 
     pub async fn publish_device_state(&self, device: &DeviceEntity, state: &str) -> Result<()> {
-        let state_topic = device.stat_topic(&self.base_topic).await;
+        let state_topic = device.stat_topic(&self.base_topic);
         self.send(&state_topic, state, true, QoS::AtLeastOnce).await
     }
 
@@ -68,9 +68,9 @@ impl MqttManager {
         retain: bool,
         qos: QoS,
     ) -> Result<()> {
-        let client = self.client.read().await;
+        let client: Option<AsyncClient> = self.client.read().await.clone();
         debug!("Sending message to topic {}", topic);
-        if let Some(client) = &*client {
+        if let Some(client) = client {
             client.publish(topic, qos, retain, msg).await?;
             Ok(())
         } else {
@@ -79,8 +79,8 @@ impl MqttManager {
     }
 
     async fn subscribe(&self, topic: &str) -> Result<()> {
-        let client = self.client.read().await;
-        if let Some(client) = &*client {
+        let client: Option<AsyncClient> = self.client.read().await.clone();
+        if let Some(client) = client {
             client.subscribe(topic, QoS::AtMostOnce).await?;
             Ok(())
         } else {
@@ -114,7 +114,7 @@ impl MqttManager {
             let res: Result<()> = async {
                 match eventloop.poll().await {
                     Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                        self.subscribe(&format!("{}#", self.base_topic)).await?;
+                        self.subscribe(&format!("{}+/cmd", self.base_topic)).await?;
                         self.send(
                             &format!("{}avty", self.base_topic),
                             "online",
@@ -125,11 +125,19 @@ impl MqttManager {
                         Ok(())
                     }
                     Ok(Event::Incoming(Packet::Publish(pubevent))) => {
-                        info!(
-                            "Received on topic {}: {}",
-                            pubevent.topic,
-                            String::from_utf8(pubevent.payload.into())?
-                        );
+                        let topic = pubevent.topic;
+                        let id = (&topic)
+                            .strip_prefix(&self.base_topic.as_str())
+                            .unwrap_or(&topic.as_str());
+                        let id = (&id).strip_suffix("/cmd").unwrap_or(id).to_string();
+                        let command = String::from_utf8(pubevent.payload.into())?;
+                        let rvlink = self.rvlink.clone();
+                        tokio::task::spawn(async move {
+                            match rvlink.run_command(&id, &command).await {
+                                Ok(_) => {}
+                                Err(e) => warn!("Error when sending command! {:?}", e),
+                            };
+                        });
                         Ok(())
                     }
                     Ok(evt) => {

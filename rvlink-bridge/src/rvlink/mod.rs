@@ -1,20 +1,22 @@
 use crate::bluetooth::BluetoothManager;
 use crate::devices::DeviceEntity;
+use crate::devices::SystemEntityType;
 use crate::mqtt::MqttManager;
-use dashmap::DashMap;
+use atomic::Atomic;
 use fixed::{types::extra::U8, FixedU16};
+use lockfree::map::Map;
 use rand::Rng;
 use rvlink_common::*;
 use rvlink_proto::{events, *};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::*;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, sleep, Duration};
 
 #[derive(Debug, Deref, Clone)]
 pub struct RVLink(Arc<RVLinkInner>);
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum DeviceState {
     #[default]
     Unknown,
@@ -37,15 +39,15 @@ impl DeviceState {
 #[derive(Debug, Default)]
 pub struct DeviceEntry {
     pub entity: DeviceEntity,
-    pub state: RwLock<DeviceState>,
+    pub state: Atomic<DeviceState>,
 }
 
 #[derive(Debug, Default)]
 struct DeviceTable {
-    pub devices: Arc<DashMap<u8, Arc<DeviceEntry>>>,
-    pub device_count: RwLock<u8>,
-    pub crc: RwLock<u32>,
-    pub metadata_crc: RwLock<u32>,
+    pub devices: Arc<Map<u8, Arc<DeviceEntry>>>,
+    pub device_count: AtomicU8,
+    pub crc: AtomicU32,
+    pub metadata_crc: AtomicU32,
 }
 
 #[derive(Debug)]
@@ -53,10 +55,10 @@ pub struct RVLinkInner {
     bluetooth: BluetoothManager,
     mqtt: RwLock<Option<MqttManager>>,
     msgnum: AtomicU16,
-    cmdmap: DashMap<u16, mpsc::UnboundedSender<CommandResponse>>,
-    device_tables: DashMap<u8, Arc<DeviceTable>>,
+    cmdmap: Map<u16, mpsc::UnboundedSender<CommandResponse>>,
+    device_tables: Map<u8, Arc<DeviceTable>>,
+    device_id_lookup: Map<String, Arc<DeviceEntry>>,
     battery: Arc<DeviceEntry>,
-    command_lock: Mutex<()>,
 }
 
 #[allow(dead_code)]
@@ -71,12 +73,55 @@ impl RVLink {
             cmdmap: Default::default(),
             device_tables: Default::default(),
             mqtt: Default::default(),
-            command_lock: Default::default(),
+            device_id_lookup: Default::default(),
             battery: Arc::new(DeviceEntry {
-                entity: DeviceEntity::new_system("Battery".into()).await,
+                entity: DeviceEntity::new_system(SystemEntityType::Battery).await,
                 state: Default::default(),
             }),
         })))
+    }
+
+    async fn lookup_device(&self, uniq_id: &str) -> Option<Arc<DeviceEntry>> {
+        self.device_id_lookup.get(uniq_id).map(|v| v.val().clone())
+    }
+
+    pub async fn run_command(&self, uniq_id: &str, command: &str) -> Result<()> {
+        if let Some(device) = self.lookup_device(uniq_id).await {
+            let device = device.clone();
+            if let Some((device_table_id, device_id)) = device.entity.get_device_address().await {
+                warn!(
+                    "Processing command {} to {}:{}",
+                    command, device_table_id, device_id
+                );
+                match command {
+                    "on" => {
+                        self.send(ActionSwitch {
+                            client_command_id: Default::default(),
+                            device_table_id,
+                            device_state: OnOff::On,
+                            first_device_id: device_id,
+                        })
+                        .await?;
+                    }
+                    "off" => {
+                        self.send(ActionSwitch {
+                            client_command_id: Default::default(),
+                            device_table_id,
+                            device_state: OnOff::Off,
+                            first_device_id: device_id,
+                        })
+                        .await?;
+                    }
+                    "open" | "close" | "stop" => {
+                        warn!("{} not yet implemented", command)
+                    }
+                    cmd => warn!("Unrecognized command: {}", cmd),
+                }
+            }
+        } else {
+            warn!("Attempt to send command to unknown device id: {}", uniq_id);
+        }
+        Ok(())
     }
 
     pub async fn set_mqtt_manager(&self, mqtt: MqttManager) {
@@ -94,14 +139,22 @@ impl RVLink {
         Ok(())
     }
 
+    async fn get_device_tables(&self) -> Result<Vec<Arc<DeviceTable>>> {
+        let mut result = vec![];
+        for t in self.device_tables.iter() {
+            result.push(t.val().clone())
+        }
+        Ok(result)
+    }
+
     pub async fn get_devices(&self) -> Result<Vec<Arc<DeviceEntry>>> {
         let mut result = vec![];
         if self.has_battery().await {
             result.push(self.battery.clone())
         }
-        for table in self.device_tables.iter() {
+        for table in self.get_device_tables().await? {
             for device in table.devices.iter() {
-                result.push(device.clone());
+                result.push(device.val().clone());
             }
         }
         Ok(result)
@@ -148,18 +201,26 @@ impl RVLink {
             }
         }
 
-        let device_table = self.get_device_table_defaulted(device_table_id);
+        let device_table = self.get_or_add_device_table(device_table_id).await;
         for (i, device) in devices.into_iter().enumerate() {
             debug!("Found device metadata: {:?}", device);
-            let (_, device_entry) = self.get_device_defaulted(device_table_id, i as u8);
+            let (_, device_entry) = self.get_or_add_device(device_table_id, i as u8).await;
             device_entry
                 .entity
                 .update_from_device_metadata(device, device_table_id, i as u8)
                 .await;
+            if device_entry.entity.device_is_ready().await {
+                self.device_id_lookup
+                    .insert(device_entry.entity.uniq_id(), device_entry);
+            }
         }
 
-        *device_table.metadata_crc.write().await = device_crc;
-        *device_table.device_count.write().await = device_count;
+        device_table
+            .metadata_crc
+            .store(device_crc, Ordering::Relaxed);
+        device_table
+            .device_count
+            .store(device_count, Ordering::Relaxed);
         warn!("Device metadata synchronized!");
         Ok(())
     }
@@ -204,34 +265,53 @@ impl RVLink {
             }
         }
 
-        let device_table = self.get_device_table_defaulted(device_table_id);
+        let device_table = self.get_or_add_device_table(device_table_id).await;
         for (i, device) in devices.into_iter().enumerate() {
             debug!("Found device: {:?}", device);
-            let (_, device_entry) = self.get_device_defaulted(device_table_id, i as u8);
+            let (_, device_entry) = self.get_or_add_device(device_table_id, i as u8).await;
             device_entry
                 .entity
                 .update_from_device_info(device, device_table_id, i as u8)
                 .await;
+            if device_entry.entity.device_is_ready().await {
+                self.device_id_lookup
+                    .insert(device_entry.entity.uniq_id(), device_entry);
+            }
         }
 
-        *device_table.crc.write().await = device_crc;
-        *device_table.device_count.write().await = device_count;
+        device_table.crc.store(device_crc, Ordering::Relaxed);
+        device_table
+            .device_count
+            .store(device_count, Ordering::Relaxed);
         warn!("Device info synchronized!");
         Ok(())
     }
 
-    fn get_device_table_defaulted(&self, device_table_id: u8) -> Arc<DeviceTable> {
-        if !self.device_tables.contains_key(&device_table_id) {
-            self.device_tables
-                .insert(device_table_id, Default::default());
+    async fn get_or_add_device_table(&self, device_table_id: u8) -> Arc<DeviceTable> {
+        let val = self.device_tables.get(&device_table_id);
+        match val {
+            Some(dt) => dt.val().clone(),
+            None => {
+                let res: Arc<DeviceTable> = Default::default();
+                self.device_tables.insert(device_table_id, res.clone());
+                res
+            }
         }
-        self.device_tables.get(&device_table_id).unwrap().clone()
     }
 
-    fn get_device_defaulted(&self, device_table_id: u8, device_id: u8) -> (bool, Arc<DeviceEntry>) {
-        let table = self.get_device_table_defaulted(device_table_id);
-        match table.devices.clone().get(&device_id) {
-            Some(d) => (false, (*&d).clone()),
+    async fn get_or_add_device(
+        &self,
+        device_table_id: u8,
+        device_id: u8,
+    ) -> (bool, Arc<DeviceEntry>) {
+        let table = self.get_or_add_device_table(device_table_id).await;
+        let device_entry: Option<Arc<DeviceEntry>> = table
+            .clone()
+            .devices
+            .get(&device_id)
+            .map(|v| v.val().clone());
+        match device_entry {
+            Some(d) => (false, d),
             None => {
                 let newval: Arc<DeviceEntry> = Default::default();
                 table.devices.insert(device_id, newval.clone());
@@ -246,9 +326,9 @@ impl RVLink {
         device_id: u8,
         state: DeviceState,
     ) -> Result<()> {
-        let (_, device_entry) = self.get_device_defaulted(device_table, device_id);
+        let (_, device_entry) = self.get_or_add_device(device_table, device_id).await;
         let state_str = state.state_string();
-        *device_entry.state.write().await = state;
+        device_entry.state.store(state, Ordering::Relaxed);
         self.get_mqtt()
             .await
             .publish_device_state(&device_entry.entity, &state_str)
@@ -300,9 +380,9 @@ impl RVLink {
                         self.handle_relay_type_2_status(evt).await
                     }
                     Ok(Event::RvStatus(evt)) => self.handle_rvstatus(evt).await,
-                    Ok(Event::RealTimeClock(_)) | Ok(Event::DeviceSessionStatus(_)) => {
-                        /* Irrelevant for now */
-                    }
+                    Ok(Event::RealTimeClock(_))
+                    | Ok(Event::DeviceSessionStatus(_))
+                    | Ok(Event::DeviceOnlineStatus(_)) => { /* Irrelevant for now */ }
                     Ok(other) => info!("Received unhandled event: {:?}", other),
                     Err(e) => warn!("Failed to parse payload from bluetooth! {:?}", e),
                 },
@@ -313,8 +393,9 @@ impl RVLink {
 
     async fn handle_command_response(&self, rsp: CommandResponse) {
         debug!("Received Command Response: {:?}", rsp);
-        if let Some(sender) = self.cmdmap.get(&rsp.client_command_id) {
-            sender.send(rsp).unwrap_or_default();
+        let sender = self.cmdmap.get(&rsp.client_command_id);
+        if let Some(sender) = sender {
+            sender.val().send(rsp).unwrap_or_default();
         } else {
             warn!("Command response received with no channel to receive it!");
         }
@@ -323,11 +404,11 @@ impl RVLink {
     async fn handle_gateway_information(&self, gwinfo: GatewayInformation) {
         let table_id = gwinfo.device_table_id;
         let update_device_table = match self.device_tables.get(&table_id) {
-            Some(dt) => *dt.crc.read().await != gwinfo.device_table_crc,
+            Some(dt) => dt.val().crc.load(Ordering::Relaxed) != gwinfo.device_table_crc,
             None => true,
         };
         let update_metadata_table = match self.device_tables.get(&table_id) {
-            Some(dt) => *dt.metadata_crc.read().await != gwinfo.device_metadata_crc,
+            Some(dt) => dt.val().metadata_crc.load(Ordering::Relaxed) != gwinfo.device_metadata_crc,
             None => true,
         };
         if update_device_table {
@@ -368,7 +449,7 @@ impl RVLink {
         let bv = status.battery_voltage();
         if bv.is_some() {
             let newstate = DeviceState::Voltage(bv.unwrap());
-            *self.battery.state.write().await = newstate.clone();
+            self.battery.state.store(newstate, Ordering::Relaxed);
             self.get_mqtt()
                 .await
                 .publish_device_state(&self.battery.entity, &newstate.state_string())
@@ -378,11 +459,11 @@ impl RVLink {
     }
 
     pub async fn has_battery(&self) -> bool {
-        *self.battery.state.read().await != DeviceState::Unknown
+        self.battery.state.load(Ordering::Relaxed) != DeviceState::Unknown
     }
 
     pub async fn get_battery_voltage(&self) -> FixedU16<U8> {
-        match *self.battery.state.read().await {
+        match self.battery.state.load(Ordering::Relaxed) {
             DeviceState::Voltage(v) => v,
             _ => Default::default(),
         }
@@ -394,7 +475,6 @@ impl RVLink {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         self.cmdmap.insert(msgnum, sender);
         // We wrap most of this in async move {} here to act similar to a finally{} block while still giving us ? operator usage
-        let _lock = self.command_lock.lock().await;
         let rsp = async move {
             debug!("Sending command# {}", msgnum);
             cmd.set_command_id(msgnum);

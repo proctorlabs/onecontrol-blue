@@ -1,13 +1,14 @@
+use atomic::{Atomic, Ordering};
 use bluer::gatt::remote::Characteristic;
 use bluer::{Adapter, AdapterEvent, Device, Uuid};
 use futures::{pin_mut, StreamExt};
+use crossbeam_queue::SegQueue;
 use rvlink_common::error::*;
 use rvlink_proto::encoding::COBS;
 use std::num::Wrapping;
 use std::sync::Arc;
 use tokio::select;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use tokio::time::{sleep, Duration};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -29,12 +30,12 @@ pub struct BluetoothManagerInner {
     // session: Session,
     adapter: Adapter,
     device: RwLock<Option<Device>>,
-    state: RwLock<BluetoothManagerState>,
+    state: Atomic<BluetoothManagerState>,
     device_name: String,
-    tx_send: UnboundedSender<Vec<u8>>,
-    tx_recv: RwLock<UnboundedReceiver<Vec<u8>>>,
-    rx_send: UnboundedSender<Vec<u8>>,
-    rx_recv: RwLock<UnboundedReceiver<Vec<u8>>>,
+    rx_queue: SegQueue<Vec<u8>>,
+    rx_notify: Notify,
+    tx_queue: SegQueue<Vec<u8>>,
+    tx_notify: Notify,
 }
 
 #[allow(dead_code)]
@@ -66,20 +67,16 @@ impl BluetoothManager {
         let adapter = session.default_adapter().await?;
         let device = Default::default();
         let state = Default::default();
-        let (tx_send, tx_recv) = unbounded_channel();
-        let (rx_send, rx_recv) = unbounded_channel();
-        let rx_recv = RwLock::new(rx_recv);
-        let tx_recv = RwLock::new(tx_recv);
         adapter.set_powered(true).await?;
         Ok(Self(Arc::new(BluetoothManagerInner {
+            rx_queue: SegQueue::new(),
+            rx_notify: Default::default(),
+            tx_queue: SegQueue::new(),
+            tx_notify: Default::default(),
             adapter,
             device,
             state,
             device_name,
-            tx_recv,
-            tx_send,
-            rx_recv,
-            rx_send,
         })))
     }
 
@@ -94,20 +91,27 @@ impl BluetoothManager {
     }
 
     pub async fn recv(&self) -> Result<Vec<u8>> {
-        Ok(self.rx_recv.write().await.recv().await.unwrap_or_default())
+        let mut res = self.rx_queue.pop();
+        while res.is_none() {
+            self.rx_notify.notified().await;
+            res = self.rx_queue.pop();
+        }
+        Ok(res.unwrap())
+        // Ok(self.rx_recv.write().await.recv().await.unwrap_or_default())
     }
 
     pub async fn send(&self, data: Vec<u8>) -> Result<()> {
-        self.tx_send.send(data)?;
+        self.tx_queue.push(data);
+        self.tx_notify.notify_one();
         Ok(())
     }
 
-    pub async fn get_state(&self) -> BluetoothManagerState {
-        *self.state.read().await
+    pub fn get_state(&self) -> BluetoothManagerState {
+        self.state.load(Ordering::Relaxed)
     }
 
-    async fn set_state(&self, state: BluetoothManagerState) {
-        *self.state.write().await = state;
+    fn set_state(&self, state: BluetoothManagerState) {
+        self.state.store(state, Ordering::Relaxed);
     }
 
     async fn find_characteristic(
@@ -139,14 +143,14 @@ impl BluetoothManager {
         tokio::task::spawn(async move {
             let zelf = zelf;
             loop {
-                match zelf.get_state().await {
+                match zelf.get_state() {
                     BluetoothManagerState::Stopped => {
                         info!("Starting bluetooth scan loop...");
-                        zelf.set_state(BluetoothManagerState::Scanning).await;
+                        zelf.set_state(BluetoothManagerState::Scanning);
                     }
                     BluetoothManagerState::Scanning => match zelf.do_scan().await {
                         Ok(_) => {
-                            zelf.set_state(BluetoothManagerState::Connecting).await;
+                            zelf.set_state(BluetoothManagerState::Connecting);
                         }
                         Err(e) => {
                             warn!("Error occurred while scanning for devices! {:?}", e);
@@ -155,7 +159,7 @@ impl BluetoothManager {
                     },
                     BluetoothManagerState::Connecting => match zelf.do_connect().await {
                         Ok(_) => {
-                            zelf.set_state(BluetoothManagerState::Handshaking).await;
+                            zelf.set_state(BluetoothManagerState::Handshaking);
                         }
                         Err(e) => {
                             warn!("Error occurred while connecting! {:?}", e);
@@ -166,12 +170,12 @@ impl BluetoothManager {
                     },
                     BluetoothManagerState::Handshaking => match zelf.do_handshake().await {
                         Ok(true) => {
-                            zelf.set_state(BluetoothManagerState::Running).await;
+                            zelf.set_state(BluetoothManagerState::Running);
                         }
                         Ok(false) => {}
                         Err(e) => {
                             warn!("Error occurred while handshaking! {:?}", e);
-                            zelf.set_state(BluetoothManagerState::Connecting).await;
+                            zelf.set_state(BluetoothManagerState::Connecting);
                             sleep(Duration::from_millis(1500)).await;
                             continue;
                         }
@@ -179,7 +183,7 @@ impl BluetoothManager {
                     BluetoothManagerState::Running => match zelf.do_run().await {
                         Err(e) => {
                             warn!("Error occurred in bluetooth main loop! Restarting connection process. {:?}", e);
-                            zelf.set_state(BluetoothManagerState::Connecting).await;
+                            zelf.set_state(BluetoothManagerState::Connecting);
                             continue;
                         }
                         _ => {}
@@ -308,19 +312,21 @@ impl BluetoothManager {
         let read_char = self
             .find_characteristic(service_uuid, can_read_uuid)
             .await?;
-        let mut tx_recv = self.tx_recv.write().await;
         let rx_recv = read_char.notify().await?;
         pin_mut!(rx_recv);
         loop {
             select! {
-                Some(tx_data) = tx_recv.recv() => {
-                    info!("Sending {:?}", tx_data);
-                    let tx_data = COBS::encode(&tx_data)?;
-                    write_char.write(&tx_data).await?;
+                _ = self.tx_notify.notified() => {
+                    while let Some(tx_data) = self.tx_queue.pop() {
+                        info!("Sending {:?}", tx_data);
+                        let tx_data = COBS::encode(&tx_data)?;
+                        write_char.write(&tx_data).await?;
+                    }
                 }
                 Some(rx_data) = rx_recv.next() => {
                     let rx_data = COBS::decode(&rx_data)?;
-                    self.rx_send.send(rx_data)?;
+                    self.rx_queue.push(rx_data);
+                    self.rx_notify.notify_one();
                 }
                 _ = sleep(Duration::from_secs(30)) => {
                     warn!("No data for 30 seconds, is something wrong? Raising an error.");

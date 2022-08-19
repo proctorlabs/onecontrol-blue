@@ -1,10 +1,12 @@
+use atomic::Atomic;
 use hmac::{Hmac, Mac};
+use lockfree::map::Map;
 use rvlink_common::devices::DeviceEntityType;
 use rvlink_common::hass::*;
 use rvlink_proto::{Device, DeviceMetadata, DeviceMetadataFull, DeviceType, FunctionName};
 use sha2::Sha256;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
+use std::sync::atomic::*;
+use std::sync::Arc;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -24,29 +26,27 @@ lazy_static! {
 }
 
 #[derive(Debug, Clone, Deref, Default)]
-pub struct DeviceEntity(Arc<RwLock<DeviceEntityInner>>);
+pub struct DeviceEntity(Arc<DeviceEntityInner>);
 
 #[derive(Debug, Default)]
 #[allow(dead_code)]
 pub struct DeviceEntityInner {
-    pub source: DeviceEntitySource,
-    pub typ: DeviceEntityType,
-    pub device_instance: u8,
-    pub function_instance: u8,
-    pub device_type: DeviceType,
-    pub function_name: FunctionName,
-    pub attributes: HashMap<String, String>,
-    pub has_device_metadata: bool,
-    pub has_device_info: bool,
+    pub source: Atomic<DeviceEntitySource>,
+    pub device_instance: AtomicU8,
+    pub function_instance: AtomicU8,
+    pub device_type: Atomic<DeviceType>,
+    pub function_name: Atomic<FunctionName>,
+    pub attributes: Map<String, String>,
+    pub has_device_metadata: AtomicBool,
+    pub has_device_info: AtomicBool,
 }
 
-#[derive(Debug, Default)]
-#[allow(dead_code)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum DeviceEntitySource {
     #[default]
     None,
     System {
-        name: String,
+        typ: SystemEntityType,
     },
     CAN {
         device_table: u8,
@@ -54,21 +54,25 @@ pub enum DeviceEntitySource {
     },
 }
 
+#[derive(Debug, Default, Display, Clone, Copy)]
+pub enum SystemEntityType {
+    #[default]
+    #[display(fmt = "Battery")]
+    Battery,
+}
+
 #[allow(dead_code)]
 impl DeviceEntity {
-    pub async fn new_system(name: String) -> Self {
+    pub async fn new_system(typ: SystemEntityType) -> Self {
         let res: Self = Default::default();
-        {
-            let mut inner = res.write().await;
-            inner.source = DeviceEntitySource::System { name };
-            inner.has_device_metadata = true;
-            inner.has_device_info = true;
-        }
+        res.source
+            .store(DeviceEntitySource::System { typ }, Ordering::Relaxed);
+        res.has_device_metadata.store(true, Ordering::Relaxed);
+        res.has_device_info.store(true, Ordering::Relaxed);
         res
     }
 
     pub async fn to_discovery(&self, base_topic: String) -> HassDiscoveryInfo {
-        let zelf = self.read().await;
         HassDiscoveryInfo {
             device: Some(HassDeviceInfo {
                 name: crate_name!().to_string().into(),
@@ -78,10 +82,10 @@ impl DeviceEntity {
                 identifiers: MACHINEID.to_string().into(),
                 ..Default::default()
             }),
-            state_topic: zelf.stat_topic("~").into(),
-            json_attributes_topic: zelf.attr_topic("~").into(),
-            availability_topic: zelf.avty_topic("~").into(),
-            command_topic: zelf.command_topic("~"),
+            state_topic: self.stat_topic("~").into(),
+            json_attributes_topic: self.attr_topic("~").into(),
+            availability_topic: self.avty_topic("~").into(),
+            command_topic: self.command_topic("~"),
             base_topic: base_topic.into(),
             payload_on: "on".to_string().into(),
             payload_off: "off".to_string().into(),
@@ -90,17 +94,17 @@ impl DeviceEntity {
             payload_stop: "stop".to_string().into(),
             payload_available: "online".to_string().into(),
             payload_not_available: "offline".to_string().into(),
-            name: zelf.display_name().into(),
-            icon: zelf.hass_icon().to_string().into(),
-            unique_id: zelf.uniq_id().into(),
-            device_class: zelf.hass_device_class(),
+            name: self.display_name().into(),
+            icon: self.hass_icon().to_string().into(),
+            unique_id: self.uniq_id().into(),
+            device_class: self.hass_device_class(),
             ..Default::default()
         }
     }
 
     pub async fn device_is_ready(&self) -> bool {
-        let device = self.read().await;
-        device.has_device_info && device.has_device_metadata
+        self.has_device_info.load(Ordering::Relaxed)
+            && self.has_device_metadata.load(Ordering::Relaxed)
     }
 
     pub async fn update_from_device_info(
@@ -109,11 +113,13 @@ impl DeviceEntity {
         device_table: u8,
         device_id: u8,
     ) {
-        let mut device = self.write().await;
-        device.source = DeviceEntitySource::CAN {
-            device_id,
-            device_table,
-        };
+        self.source.store(
+            DeviceEntitySource::CAN {
+                device_id,
+                device_table,
+            },
+            Ordering::Relaxed,
+        );
         match device_info {
             Device::Full {
                 device_type,
@@ -122,20 +128,20 @@ impl DeviceEntity {
                 mac_address,
                 ..
             } => {
-                device.device_type = device_type;
-                device.device_instance = device_instance;
-                device
-                    .attributes
+                self.device_type.store(device_type, Ordering::Relaxed);
+                self.device_instance
+                    .store(device_instance, Ordering::Relaxed);
+                self.attributes
                     .insert("product_id".into(), product_id.to_string());
-                device
-                    .attributes
+                self.attributes
                     .insert("device_mac".into(), mac_address.to_string());
             }
             Device::Basic { .. } | Device::None => {
-                device.source = DeviceEntitySource::None;
+                self.source
+                    .store(DeviceEntitySource::None, Ordering::Relaxed);
             }
         }
-        device.has_device_info = true;
+        self.has_device_info.store(true, Ordering::Relaxed);
     }
 
     pub async fn update_from_device_metadata(
@@ -144,11 +150,13 @@ impl DeviceEntity {
         device_table: u8,
         device_id: u8,
     ) {
-        let mut device = self.write().await;
-        device.source = DeviceEntitySource::CAN {
-            device_id,
-            device_table,
-        };
+        self.source.store(
+            DeviceEntitySource::CAN {
+                device_id,
+                device_table,
+            },
+            Ordering::Relaxed,
+        );
         match device_info {
             DeviceMetadata::Full(DeviceMetadataFull {
                 function_name,
@@ -159,36 +167,38 @@ impl DeviceEntity {
                 software_part_number,
                 ..
             }) => {
-                device.function_name = function_name;
-                device.function_instance = function_instance;
-                device.attributes.insert(
+                self.function_name.store(function_name, Ordering::Relaxed);
+                self.function_instance
+                    .store(function_instance, Ordering::Relaxed);
+                self.attributes.insert(
                     "device_capabilities".into(),
                     format!("{:#02x}", device_capabilities),
                 );
-                device
-                    .attributes
+                self.attributes
                     .insert("can_version".into(), format!("{:#02x}", can_version));
-                device
-                    .attributes
+                self.attributes
                     .insert("circuit_number".into(), format!("{}", circuit_number));
-                device.attributes.insert(
+                self.attributes.insert(
                     "software_part_number".into(),
                     software_part_number.to_string(),
                 );
             }
             DeviceMetadata::Basic { .. } | DeviceMetadata::None => {
-                device.source = DeviceEntitySource::None;
+                self.source
+                    .store(DeviceEntitySource::None, Ordering::Relaxed);
             }
         }
-        device.has_device_metadata = true;
+        self.has_device_metadata.store(true, Ordering::Relaxed);
     }
 
-    pub async fn config_topic(&self, config_base_topic: &str) -> String {
-        self.read().await.config_topic(config_base_topic)
-    }
-
-    pub async fn stat_topic(&self, base_topic: &str) -> String {
-        self.read().await.stat_topic(base_topic)
+    pub async fn get_device_address(&self) -> Option<(u8, u8)> {
+        match self.source.load(Ordering::Relaxed) {
+            DeviceEntitySource::CAN {
+                device_table,
+                device_id,
+            } => Some((device_table, device_id)),
+            _ => None,
+        }
     }
 }
 
@@ -202,25 +212,33 @@ impl DeviceEntityInner {
     }
 
     pub fn display_name(&self) -> String {
-        match &self.source {
+        match self.source.load(Ordering::Relaxed) {
             DeviceEntitySource::None => "rvlink-bridge".into(),
-            DeviceEntitySource::System { name } => name.clone(),
+            DeviceEntitySource::System { typ } => typ.to_string(),
             DeviceEntitySource::CAN { .. } => {
-                if self.function_name != FunctionName::Unknown {
-                    if self.function_instance > 0 {
-                        format!("{} {}", self.function_name, self.function_instance)
+                if self.function_name.load(Ordering::Relaxed) != FunctionName::Unknown {
+                    if self.function_instance.load(Ordering::Relaxed) > 0 {
+                        format!(
+                            "{} {}",
+                            self.function_name.load(Ordering::Relaxed),
+                            self.function_instance.load(Ordering::Relaxed)
+                        )
                     } else {
-                        self.function_name.to_string()
+                        self.function_name.load(Ordering::Relaxed).to_string()
                     }
                 } else {
-                    self.device_type.to_string()
+                    self.device_type.load(Ordering::Relaxed).to_string()
                 }
             }
         }
     }
 
     pub fn hass_device_type(&self) -> HassDiscoveryType {
-        match self.function_name.device_entity_type() {
+        match self
+            .function_name
+            .load(Ordering::Relaxed)
+            .device_entity_type()
+        {
             DeviceEntityType::LightSwitch => HassDiscoveryType::Light,
             DeviceEntityType::WaterHeater
             | DeviceEntityType::WaterPump
@@ -243,16 +261,18 @@ impl DeviceEntityInner {
     }
 
     pub fn uniq_id(&self) -> String {
-        match &self.source {
+        match self.source.load(Ordering::Relaxed) {
             DeviceEntitySource::None => "rvlink-bridge".into(),
-            DeviceEntitySource::System { name } => name.clone().replace(' ', "_").to_lowercase(),
+            DeviceEntitySource::System { typ } => typ.to_string().replace(' ', "_").to_lowercase(),
             DeviceEntitySource::CAN {
                 device_table,
                 device_id,
             } => format!(
                 "{}-{}-can-{}-{}",
                 *MACHINEID,
-                self.function_name.device_entity_type(),
+                self.function_name
+                    .load(Ordering::Relaxed)
+                    .device_entity_type(),
                 device_table,
                 device_id
             ),

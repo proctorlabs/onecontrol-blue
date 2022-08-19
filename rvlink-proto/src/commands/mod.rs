@@ -469,15 +469,15 @@ commands! {
     &+ StopDeviceBlockTransferResponseSuccessCompleted (4..4) {}
     &- StopDeviceBlockTransferResponseFailureCompleted (4..4) {}
 
-    ActionSwitch (64; 5..5) {
+    ActionSwitch (64; 5..255) {
         device_table_id: u8 [3], //1
         device_state: OnOff [4],
         first_device_id: u8 [5], //7
     } -> ActionSwitchResponse:
-    + ActionSwitchResponseSuccess (4..4) {}
-    - ActionSwitchResponseFailure (4..4) {}
-    &+ ActionSwitchResponseSuccessCompleted (4..4) {}
-    &- ActionSwitchResponseFailureCompleted (4..4) {}
+    + ActionSwitchResponseSuccess (4..384) {}
+    - ActionSwitchResponseFailure (4..384) {}
+    &+ ActionSwitchResponseSuccessCompleted (4..384) {}
+    &- ActionSwitchResponseFailureCompleted (4..384) {}
 
     ActionMovement (65; 6..6) {
         device_table_id: u8 [3],

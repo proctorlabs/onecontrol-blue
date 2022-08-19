@@ -1,4 +1,4 @@
-#[derive(Debug, Display, Default, PartialEq)]
+#[derive(Debug, Display, Default, PartialEq, Clone, Copy)]
 #[allow(dead_code)]
 pub enum DeviceEntityType {
     #[default]
