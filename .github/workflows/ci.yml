@@ -26,9 +26,7 @@ jobs:
           - target: armv7-unknown-linux-gnueabihf
             file-tag: "armv7l"
             strip: "arm-linux-gnueabihf-strip"
-          - target: arm-unknown-linux-gnueabihf
-            file-tag: "armv6"
-            strip: "arm-linux-gnueabihf-strip"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v2
