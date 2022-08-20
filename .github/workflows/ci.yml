@@ -18,18 +18,18 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             file-tag: "x86_64"
             strip: "x86_64-linux-gnu-strip"
-          - target: i686-unknown-linux-gnu
-            file-tag: "i686"
-            strip: "i686-linux-gnu-strip"
-          - target: aarch64-unknown-linux-gnu
-            file-tag: "aarch64"
-            strip: "aarch64-linux-gnu-strip"
-          - target: armv7-unknown-linux-gnueabihf
-            file-tag: "armv7l"
-            strip: "arm-linux-gnueabihf-strip"
-          - target: arm-unknown-linux-gnueabihf
-            file-tag: "armv6"
-            strip: "arm-linux-gnueabihf-strip"
+          # - target: i686-unknown-linux-gnu
+          #   file-tag: "i686"
+          #   strip: "i686-linux-gnu-strip"
+          # - target: aarch64-unknown-linux-gnu
+          #   file-tag: "aarch64"
+          #   strip: "aarch64-linux-gnu-strip"
+          # - target: armv7-unknown-linux-gnueabihf
+          #   file-tag: "armv7l"
+          #   strip: "arm-linux-gnueabihf-strip"
+          # - target: arm-unknown-linux-gnueabihf
+          #   file-tag: "armv6"
+          #   strip: "arm-linux-gnueabihf-strip"
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -44,7 +44,7 @@ jobs:
 
       - name: Install build dependencies
         run: >-
-             sudo apt-get install libdbus-1-dev pkg-config
+             sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Build target
         uses: actions-rs/cargo@v1
