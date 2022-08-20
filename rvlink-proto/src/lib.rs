@@ -103,4 +103,5 @@ encodable_enum! {
     ProtocolType as u8,
     FunctionName as u16,
     CommandType as u8,
+    RelayDirection as u8,
 }

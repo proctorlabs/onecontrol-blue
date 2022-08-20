@@ -10,6 +10,7 @@ use rvlink_common::*;
 use rvlink_proto::{events, *};
 use std::sync::atomic::*;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, sleep, Duration};
 
@@ -40,6 +41,8 @@ impl DeviceState {
 pub struct DeviceEntry {
     pub entity: DeviceEntity,
     pub state: Atomic<DeviceState>,
+    pub last_published: AtomicU64,
+    pub last_published_state: Atomic<DeviceState>,
 }
 
 #[derive(Debug, Default)]
@@ -77,12 +80,58 @@ impl RVLink {
             battery: Arc::new(DeviceEntry {
                 entity: DeviceEntity::new_system(SystemEntityType::Battery).await,
                 state: Default::default(),
+                last_published: Default::default(),
+                last_published_state: Default::default(),
             }),
         })))
     }
 
     async fn lookup_device(&self, uniq_id: &str) -> Option<Arc<DeviceEntry>> {
         self.device_id_lookup.get(uniq_id).map(|v| v.val().clone())
+    }
+
+    async fn publish_device_state(&self, entry: &DeviceEntry) {
+        let cur_state = entry.state.load(Ordering::Relaxed);
+        let last_state = entry.last_published_state.load(Ordering::Relaxed);
+        let start = SystemTime::now();
+        let last_timestamp = entry.last_published.load(Ordering::Relaxed);
+        let cur_timestamp = start
+            .duration_since(UNIX_EPOCH)
+            .expect("You are a time traveler")
+            .as_secs();
+
+        // Avoid republishing unless it's been at least 20 seconds OR the state has changed
+        if (cur_state != last_state) || ((cur_timestamp - last_timestamp) > 20) {
+            entry
+                .last_published_state
+                .store(cur_state, Ordering::Relaxed);
+            entry.last_published.store(cur_timestamp, Ordering::Relaxed);
+            let zelf = self.clone();
+            let device = entry.entity.clone();
+            let state_str = cur_state.state_string();
+            // Spawn a lightweight task so we don't block this one if MQTT is blocked
+            tokio::task::spawn(async move {
+                match zelf
+                    .get_mqtt()
+                    .await
+                    .publish_device_state(&device, &state_str)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(e) => warn!("Could not update device state due to error! {:?}", e),
+                }
+            });
+        }
+    }
+
+    async fn publish_device_info(&self, device: DeviceEntity) {
+        let zelf = self.clone();
+        tokio::task::spawn(async move {
+            match zelf.get_mqtt().await.publish_device_info(&device).await {
+                Ok(_) => {}
+                Err(e) => warn!("Could not update device state due to error! {:?}", e),
+            }
+        });
     }
 
     pub async fn run_command(&self, uniq_id: &str, command: &str) -> Result<()> {
@@ -112,8 +161,32 @@ impl RVLink {
                         })
                         .await?;
                     }
-                    "open" | "close" | "stop" => {
-                        warn!("{} not yet implemented", command)
+                    "open" => {
+                        self.send(ActionMovement {
+                            client_command_id: Default::default(),
+                            device_table_id,
+                            device_id: device_id,
+                            device_state: RelayDirection::Open,
+                        })
+                        .await?;
+                    }
+                    "close" => {
+                        self.send(ActionMovement {
+                            client_command_id: Default::default(),
+                            device_table_id,
+                            device_id: device_id,
+                            device_state: RelayDirection::Close,
+                        })
+                        .await?;
+                    }
+                    "stop" => {
+                        self.send(ActionMovement {
+                            client_command_id: Default::default(),
+                            device_table_id,
+                            device_id: device_id,
+                            device_state: RelayDirection::Stop,
+                        })
+                        .await?;
                     }
                     cmd => warn!("Unrecognized command: {}", cmd),
                 }
@@ -327,12 +400,8 @@ impl RVLink {
         state: DeviceState,
     ) -> Result<()> {
         let (_, device_entry) = self.get_or_add_device(device_table, device_id).await;
-        let state_str = state.state_string();
         device_entry.state.store(state, Ordering::Relaxed);
-        self.get_mqtt()
-            .await
-            .publish_device_state(&device_entry.entity, &state_str)
-            .await?;
+        self.publish_device_state(&device_entry).await;
         Ok(())
     }
 
@@ -345,10 +414,7 @@ impl RVLink {
                 let devices = self.get_devices().await?;
                 for device in devices {
                     if device.entity.device_is_ready().await {
-                        self.get_mqtt()
-                            .await
-                            .publish_device_info(&device.entity)
-                            .await?;
+                        self.publish_device_info(device.entity.clone()).await;
                     } else {
                         warn!(
                             "Skipped publishing info for {:?} -- device is not ready",
@@ -450,11 +516,7 @@ impl RVLink {
         if bv.is_some() {
             let newstate = DeviceState::Voltage(bv.unwrap());
             self.battery.state.store(newstate, Ordering::Relaxed);
-            self.get_mqtt()
-                .await
-                .publish_device_state(&self.battery.entity, &newstate.state_string())
-                .await
-                .unwrap_or_default();
+            self.publish_device_state(&self.battery).await;
         }
     }
 

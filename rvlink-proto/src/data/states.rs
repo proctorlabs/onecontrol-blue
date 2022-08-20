@@ -1,6 +1,5 @@
 use super::*;
 
-#[allow(dead_code)]
 #[derive(Default, Debug, Display, PartialEq, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum OnOff {
@@ -9,6 +8,18 @@ pub enum OnOff {
     Off = 0,
     #[display(fmt = "on")]
     On = 1,
+}
+
+#[derive(Default, Debug, Display, PartialEq, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum RelayDirection {
+    #[default]
+    #[display(fmt = "stop")]
+    Stop = 0,
+    #[display(fmt = "open")]
+	Open = 2,
+    #[display(fmt = "close")]
+	Close = 3,
 }
 
 define_encodable_struct! {
