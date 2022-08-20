@@ -1,3 +1,3 @@
-# rvlink-bridge
+# RVLink Bridge
 
-Reverse engineering LCI Onecontrol/RVLink for the purpose of eventually creating a device bridge.
+This is a bridge for Lippert RVLink/Onecontrol & compatible devices to MQTT for usage with home assistant.
