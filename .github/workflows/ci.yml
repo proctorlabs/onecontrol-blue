@@ -42,10 +42,6 @@ jobs:
           override: true
           target: ${{ matrix.target }}
 
-      - name: Install build dependencies
-        run: >-
-             sudo apt-get install -y libdbus-1-dev pkg-config
-
       - name: Build target
         uses: actions-rs/cargo@v1
         with:
@@ -55,7 +51,7 @@ jobs:
 
       - name: Strip binary
         run: >-
-          docker run -v $PWD/:/work rustembedded/cross:${{ matrix.target }} ${{ matrix.strip }} /work/target/${{ matrix.target }}/release/rvlink-bridge
+          docker run -v $PWD/:/work ghcr.io/cross-rs/${{ matrix.target }}:latest ${{ matrix.strip }} /work/target/${{ matrix.target }}/release/rvlink-bridge
 
       - name: Package tarball
         run: >-
