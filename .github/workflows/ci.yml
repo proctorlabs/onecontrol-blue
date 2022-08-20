@@ -10,7 +10,6 @@ on:
 jobs:
   build_and_release:
     name: "Build & Release"
-    # if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -18,18 +17,18 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             file-tag: "x86_64"
             strip: "x86_64-linux-gnu-strip"
-          # - target: i686-unknown-linux-gnu
-          #   file-tag: "i686"
-          #   strip: "i686-linux-gnu-strip"
-          # - target: aarch64-unknown-linux-gnu
-          #   file-tag: "aarch64"
-          #   strip: "aarch64-linux-gnu-strip"
-          # - target: armv7-unknown-linux-gnueabihf
-          #   file-tag: "armv7l"
-          #   strip: "arm-linux-gnueabihf-strip"
-          # - target: arm-unknown-linux-gnueabihf
-          #   file-tag: "armv6"
-          #   strip: "arm-linux-gnueabihf-strip"
+          - target: i686-unknown-linux-gnu
+            file-tag: "i686"
+            strip: "i686-linux-gnu-strip"
+          - target: aarch64-unknown-linux-gnu
+            file-tag: "aarch64"
+            strip: "aarch64-linux-gnu-strip"
+          - target: armv7-unknown-linux-gnueabihf
+            file-tag: "armv7l"
+            strip: "arm-linux-gnueabihf-strip"
+          - target: arm-unknown-linux-gnueabihf
+            file-tag: "armv6"
+            strip: "arm-linux-gnueabihf-strip"
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -49,22 +48,29 @@ jobs:
           command: build
           args: --release --target ${{ matrix.target }}
 
-      - name: Strip binary
-        run: >-
-          docker run -v $PWD/:/work ghcr.io/cross-rs/${{ matrix.target }}:latest ${{ matrix.strip }} /work/target/${{ matrix.target }}/release/rvlink-bridge
-
       - name: Package tarball
         run: >-
-          tar -cJf --lzip 'rvlink-bridge.${{ matrix.file-tag }}.tar.lz' -C target/${{ matrix.target }}/release rvlink-bridge
-          ls -al
+          tar -cJ --lzip -f 'rvlink-bridge.${{ matrix.file-tag }}.tar.lz' -C target/${{ matrix.target }}/release rvlink-bridge
 
-      # - name: Upload Release Assets
-      #   id: upload-release-asset
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ needs.create_release.outputs.upload_url }}
-      #     asset_path: ./rvlink-bridge.${{ matrix.file-tag }}.tar.xz
-      #     asset_name: rvlink-bridge.${{ matrix.file-tag }}.tar.xz
-      #     asset_content_type: application/x-gtar
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ""
+          draft: false
+          prerelease: false
+
+      - name: Upload Artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./rvlink-bridge.${{ matrix.file-tag }}.tar.xz
+          asset_name: rvlink-bridge.${{ matrix.file-tag }}.tar.xz
+          asset_content_type: application/x-gtar
