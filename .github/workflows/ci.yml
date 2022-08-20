@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
     tags:
       - "v*.*.*"
 
@@ -57,7 +57,6 @@ jobs:
         run: >-
           tar -cJf --lzip 'rvlink-bridge.${{ matrix.file-tag }}.tar.lz' -C target/${{ matrix.target }}/release rvlink-bridge
           ls -al
-          
 
       # - name: Upload Release Assets
       #   id: upload-release-asset
