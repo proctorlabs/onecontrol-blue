@@ -50,7 +50,7 @@ jobs:
 
       - name: Package tarball
         run: >-
-          tar -cJ --lzip -f 'rvlink-bridge.${{ matrix.file-tag }}.tar.lz' -C target/${{ matrix.target }}/release rvlink-bridge
+          tar --lzip -cf 'rvlink-bridge.${{ matrix.file-tag }}.tar.lz' -C target/${{ matrix.target }}/release rvlink-bridge
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -71,6 +71,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./rvlink-bridge.${{ matrix.file-tag }}.tar.xz
-          asset_name: rvlink-bridge.${{ matrix.file-tag }}.tar.xz
+          asset_path: ./rvlink-bridge.${{ matrix.file-tag }}.tar.lz
+          asset_name: rvlink-bridge.${{ matrix.file-tag }}.tar.lz
           asset_content_type: application/x-gtar
