@@ -82,6 +82,6 @@ jobs:
         run: |-
           docker buildx build \
             --platform linux/amd64,linux/arm/v7,linux/arm64 \
-            -f docker/Dockerfile \
+            -f Dockerfile \
             -t "ghcr.io/proctorlabs/rvling-bridge:${GITHUB_REF##*/}" \
-            --push docker/
+            --push .
