@@ -57,7 +57,6 @@ jobs:
   #         files: ./rvlink-bridge.*.tar.xz
   docker_images:
     name: Create docker images
-    needs: ['build_release']
     runs-on: ubuntu-20.04
     steps:
       - name: Check out the repo
