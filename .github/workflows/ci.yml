@@ -8,50 +8,78 @@ on:
       - "v*.*.*"
 
 jobs:
-  build_and_release:
-    name: "Build & Release"
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            file-tag: "x86_64"
-            strip: "x86_64-linux-gnu-strip"
-          - target: i686-unknown-linux-gnu
-            file-tag: "i686"
-            strip: "i686-linux-gnu-strip"
-          - target: aarch64-unknown-linux-gnu
-            file-tag: "aarch64"
-            strip: "aarch64-linux-gnu-strip"
-          - target: armv7-unknown-linux-gnueabihf
-            file-tag: "armv7l"
-            strip: "arm-linux-gnueabihf-strip"
+  # build_and_release:
+  #   name: "Build & Release"
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       include:
+  #         - target: x86_64-unknown-linux-gnu
+  #           file-tag: "x86_64"
+  #           strip: "x86_64-linux-gnu-strip"
+  #         - target: i686-unknown-linux-gnu
+  #           file-tag: "i686"
+  #           strip: "i686-linux-gnu-strip"
+  #         - target: aarch64-unknown-linux-gnu
+  #           file-tag: "aarch64"
+  #           strip: "aarch64-linux-gnu-strip"
+  #         - target: armv7-unknown-linux-gnueabihf
+  #           file-tag: "armv7l"
+  #           strip: "arm-linux-gnueabihf-strip"
 
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v2
+
+  #     - name: Install rust
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         override: true
+  #         target: ${{ matrix.target }}
+
+  #     - name: Build target
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         use-cross: true
+  #         command: build
+  #         args: --release --target ${{ matrix.target }}
+
+  #     - name: Package tarball
+  #       run: >-
+  #         tar -cJf 'rvlink-bridge.${{ matrix.file-tag }}.tar.xz' -C target/${{ matrix.target }}/release rvlink-bridge
+
+  #     - name: Create release with assets
+  #       uses: softprops/action-gh-release@v1
+  #       if: startsWith(github.ref, 'refs/tags/')
+  #       with:
+  #         files: ./rvlink-bridge.*.tar.xz
+  docker_images:
+    name: Create docker images
+    needs: ['build_release']
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout
+      - name: Check out the repo
         uses: actions/checkout@v2
 
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          target: ${{ matrix.target }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
 
-      - name: Build target
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --release --target ${{ matrix.target }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
 
-      - name: Package tarball
-        run: >-
-          tar -cJf 'rvlink-bridge.${{ matrix.file-tag }}.tar.xz' -C target/${{ matrix.target }}/release rvlink-bridge
+      - name: Docker Login
+        env:
+          DOCKER_USERNAME: ${{ secrets.GHCR_USER }}
+          DOCKER_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+        run: |-
+          docker login ghcr.io -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}"
 
-      - name: Create release with assets
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: ./rvlink-bridge.*.tar.xz
+      - name: Run Crossbuild
+        run: |-
+          docker buildx build \
+            --platform linux/amd64,linux/arm/v7,linux/arm64 \
+            -f docker/Dockerfile \
+            -t "ghcr.io/proctorlabs/rvling-bridge:${GITHUB_REF##*/}" \
+            --push docker/
