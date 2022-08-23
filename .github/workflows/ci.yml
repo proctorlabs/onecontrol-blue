@@ -81,7 +81,7 @@ jobs:
       - name: Run Crossbuild
         run: |-
           docker buildx build \
-            --platform linux/amd64,linux/arm/v7,linux/arm64 \
+            --platform linux/amd64,linux/arm64 \
             -f Dockerfile \
             -t "ghcr.io/proctorlabs/rvling-bridge:${GITHUB_REF##*/}" \
             --push .
