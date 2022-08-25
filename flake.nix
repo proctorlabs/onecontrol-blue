@@ -16,19 +16,23 @@
 
       in rec {
         # For `nix build` & `nix run`:
-        defaultPackage = naersk'.buildPackage {
-          nativeBuildInputs = with pkgs; [ pkgconfig ];
-          buildInputs = with pkgs; [ dbus ];
-          src = ./.;
-        };
+        defaultPackage = packages.rvlink-bridge;
 
         # For `nix develop`:
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [ dbus pkgconfig rustc cargo ];
         };
 
-        packages.rvlink-docker = pkgs.dockerTools.buildImage {
+        packages.rvlink-bridge = naersk'.buildPackage {
           name = "rvlink-bridge";
+          pname = "rvlink-bridge";
+          nativeBuildInputs = with pkgs; [ pkgconfig ];
+          buildInputs = with pkgs; [ dbus ];
+          src = ./.;
+        };
+
+        packages.rvlink-docker = pkgs.dockerTools.buildImage {
+          name = "rvlink-bridge-docker";
           tag = "latest";
 
           copyToRoot = [ pkgs.bash pkgs.coreutils ];
